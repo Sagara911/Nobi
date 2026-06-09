@@ -64,6 +64,10 @@ fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
             caption TEXT,
             embedding TEXT,
             embed_model_version TEXT
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
         );",
     )
     .map_err(|e| e.to_string())?;
@@ -415,13 +419,32 @@ fn image_data_uri(path: &str) -> Result<String, String> {
     Ok(format!("data:{};base64,{}", mime, b64))
 }
 
-/// (base_url, model, api_key)；默认本地 Ollama，可用环境变量覆盖以接入 DeepSeek/GPT 等
-fn ai_config() -> (String, String, String) {
-    let base = std::env::var("GRINGOTTS_AI_BASE")
-        .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
-    let model = std::env::var("GRINGOTTS_AI_MODEL").unwrap_or_else(|_| "gemma4:12b".to_string());
-    let key = std::env::var("GRINGOTTS_AI_KEY").unwrap_or_else(|_| "ollama".to_string());
-    (base, model, key)
+/// 读取单个用户设置项（非空才算）
+fn get_setting(app: &tauri::AppHandle, key: &str) -> Option<String> {
+    let conn = open_db(app).ok()?;
+    conn.query_row(
+        "SELECT value FROM settings WHERE key=?1",
+        rusqlite::params![key],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+    .filter(|s| !s.trim().is_empty())
+}
+
+/// 配置优先级：用户设置 > 环境变量 > 默认值
+fn cfg(app: &tauri::AppHandle, skey: &str, env: &str, def: &str) -> String {
+    get_setting(app, skey)
+        .or_else(|| std::env::var(env).ok().filter(|s| !s.is_empty()))
+        .unwrap_or_else(|| def.to_string())
+}
+
+/// (base_url, model, api_key) —— 视觉/LLM Provider（默认本地 Ollama）
+fn ai_config(app: &tauri::AppHandle) -> (String, String, String) {
+    (
+        cfg(app, "ai_base", "GRINGOTTS_AI_BASE", "http://localhost:11434/v1"),
+        cfg(app, "ai_model", "GRINGOTTS_AI_MODEL", "gemma4:12b"),
+        cfg(app, "ai_key", "GRINGOTTS_AI_KEY", "ollama"),
+    )
 }
 
 /// 对某素材跑一次视觉模型。mode: "tags" | "prompt" | "describe"。
@@ -447,7 +470,7 @@ async fn ai_run(app: tauri::AppHandle, id: i64, mode: String) -> Result<String, 
         _ => "用中文分析这张画面：构图、打光、配色、风格特点。简明扼要，分点列出。",
     };
 
-    let (base, model, key) = ai_config();
+    let (base, model, key) = ai_config(&app);
     let url = format!("{}/chat/completions", base.trim_end_matches('/'));
     let body = serde_json::json!({
         "model": model,
@@ -534,14 +557,14 @@ async fn ai_tag_bulk(app: tauri::AppHandle, ids: Vec<i64>) -> Result<usize, Stri
 
 // ===== 语义搜索（文本嵌入：caption→向量；查询→向量；余弦相似）=====
 
-fn embed_config() -> (String, String, String) {
-    let (base, _m, key) = ai_config();
-    let model = std::env::var("GRINGOTTS_EMBED_MODEL").unwrap_or_else(|_| "bge-m3".to_string());
+fn embed_config(app: &tauri::AppHandle) -> (String, String, String) {
+    let (base, _m, key) = ai_config(app);
+    let model = cfg(app, "embed_model", "GRINGOTTS_EMBED_MODEL", "bge-m3");
     (base, model, key)
 }
 
-async fn embed_text(text: &str) -> Result<Vec<f32>, String> {
-    let (base, model, key) = embed_config();
+async fn embed_text(app: &tauri::AppHandle, text: &str) -> Result<Vec<f32>, String> {
+    let (base, model, key) = embed_config(app);
     let url = format!("{}/embeddings", base.trim_end_matches('/'));
     let body = serde_json::json!({ "model": model, "input": text });
     let client = reqwest::Client::new();
@@ -597,7 +620,7 @@ fn load_embeddings(app: &tauri::AppHandle) -> Result<Vec<(i64, Vec<f32>)>, Strin
 /// 为缺向量（或换了嵌入模型）的素材建立语义索引：Gemma 生成描述 → bge-m3 转向量。返回处理数量。
 #[tauri::command]
 async fn build_embeddings(app: tauri::AppHandle) -> Result<usize, String> {
-    let (_b, model, _k) = embed_config();
+    let (_b, model, _k) = embed_config(&app);
     let todo: Vec<i64> = {
         let conn = open_db(&app)?;
         let mut stmt = conn
@@ -629,7 +652,7 @@ async fn build_embeddings(app: tauri::AppHandle) -> Result<usize, String> {
             .unwrap_or_default()
         };
         let text = format!("{} {}", caption, extra);
-        let emb = match embed_text(&text).await {
+        let emb = match embed_text(&app, &text).await {
             Ok(e) => e,
             Err(_) => continue,
         };
@@ -651,7 +674,7 @@ async fn semantic_search(
     query: String,
     top: usize,
 ) -> Result<Vec<i64>, String> {
-    let qv = embed_text(&query).await?;
+    let qv = embed_text(&app, &query).await?;
     let rows = load_embeddings(&app)?;
     let mut scored: Vec<(i64, f32)> = rows
         .into_iter()
@@ -679,6 +702,57 @@ fn similar_to(app: tauri::AppHandle, id: i64, top: usize) -> Result<Vec<i64>, St
     Ok(scored.into_iter().take(top.max(1)).map(|(id, _)| id).collect())
 }
 
+// ===== 设置（AI Provider 可配置）=====
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AiSettings {
+    ai_base: String,
+    ai_model: String,
+    ai_key: String,
+    embed_model: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AiSettingsIn {
+    ai_base: String,
+    ai_model: String,
+    ai_key: String,
+    embed_model: String,
+}
+
+/// 返回当前生效的 AI 配置（含默认值），供设置面板回显
+#[tauri::command]
+fn get_settings(app: tauri::AppHandle) -> Result<AiSettings, String> {
+    let (base, model, key) = ai_config(&app);
+    let (_b, emb, _k) = embed_config(&app);
+    Ok(AiSettings {
+        ai_base: base,
+        ai_model: model,
+        ai_key: key,
+        embed_model: emb,
+    })
+}
+
+/// 保存 AI 配置（留空的项会回退到环境变量/默认值）
+#[tauri::command]
+fn set_settings(app: tauri::AppHandle, settings: AiSettingsIn) -> Result<(), String> {
+    let conn = open_db(&app)?;
+    let put = |k: &str, v: &str| {
+        let _ = conn.execute(
+            "INSERT INTO settings(key,value) VALUES(?1,?2)
+             ON CONFLICT(key) DO UPDATE SET value=?2",
+            rusqlite::params![k, v],
+        );
+    };
+    put("ai_base", settings.ai_base.trim());
+    put("ai_model", settings.ai_model.trim());
+    put("ai_key", settings.ai_key.trim());
+    put("embed_model", settings.embed_model.trim());
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -697,7 +771,9 @@ pub fn run() {
             remove_asset,
             build_embeddings,
             semantic_search,
-            similar_to
+            similar_to,
+            get_settings,
+            set_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

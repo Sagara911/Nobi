@@ -318,3 +318,25 @@ body {
   background: transparent; border: none; color: var(--gold);
   padding: 0 6px; cursor: pointer; font-size: 12px;
 }
+
+/* 设置弹窗 */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 22px; width: 460px; max-width: 90vw; max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+}
+.modal h3 { margin: 0 0 6px; color: var(--gold); }
+.modal label { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 4px; }
+.cfg-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none;
+}
+.cfg-input:focus { border-color: var(--gold-dim); }
+.modal-actions {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 18px;
+}
+.modal-actions .dim { margin-right: auto; }

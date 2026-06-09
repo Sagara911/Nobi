@@ -315,6 +315,115 @@ function TagTree({
   );
 }
 
+interface AiCfg {
+  aiBase: string;
+  aiModel: string;
+  aiKey: string;
+  embedModel: string;
+}
+
+const AI_PRESETS: Record<string, AiCfg> = {
+  "本地 Ollama (Gemma 4)": {
+    aiBase: "http://localhost:11434/v1",
+    aiModel: "gemma4:12b",
+    aiKey: "ollama",
+    embedModel: "bge-m3",
+  },
+  DeepSeek: {
+    aiBase: "https://api.deepseek.com/v1",
+    aiModel: "deepseek-vl2",
+    aiKey: "",
+    embedModel: "bge-m3",
+  },
+  OpenAI: {
+    aiBase: "https://api.openai.com/v1",
+    aiModel: "gpt-4o-mini",
+    aiKey: "",
+    embedModel: "text-embedding-3-small",
+  },
+};
+
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  const [f, setF] = useState<AiCfg>({ aiBase: "", aiModel: "", aiKey: "", embedModel: "" });
+  const [saved, setSaved] = useState("");
+  useEffect(() => {
+    invoke<AiCfg>("get_settings").then(setF).catch(() => {});
+  }, []);
+  async function save() {
+    try {
+      await invoke("set_settings", { settings: f });
+      setSaved("已保存 ✓");
+      setTimeout(onClose, 600);
+    } catch (e) {
+      setSaved(`保存失败：${e}`);
+    }
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>⚙️ AI 设置</h3>
+        <p className="dim">
+          选本地 Ollama（装了 Gemma 就用），或填你自己的 OpenAI 兼容 API（DeepSeek / GPT 等）。留空项回退默认。
+        </p>
+        <label>快速预设</label>
+        <select
+          className="cfg-input"
+          defaultValue=""
+          onChange={(e) => {
+            const p = AI_PRESETS[e.target.value];
+            if (p) setF((prev) => ({ ...prev, ...p }));
+          }}
+        >
+          <option value="">— 选择预设 —</option>
+          {Object.keys(AI_PRESETS).map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <label>API 地址 (Base URL)</label>
+        <input
+          className="cfg-input"
+          value={f.aiBase}
+          onChange={(e) => setF({ ...f, aiBase: e.target.value })}
+          placeholder="http://localhost:11434/v1"
+        />
+        <label>视觉 / 对话模型</label>
+        <input
+          className="cfg-input"
+          value={f.aiModel}
+          onChange={(e) => setF({ ...f, aiModel: e.target.value })}
+          placeholder="gemma4:12b"
+        />
+        <label>API Key</label>
+        <input
+          className="cfg-input"
+          type="password"
+          value={f.aiKey}
+          onChange={(e) => setF({ ...f, aiKey: e.target.value })}
+          placeholder="本地 Ollama 随便填；云端填你的 key"
+        />
+        <label>嵌入模型（语义搜索用）</label>
+        <input
+          className="cfg-input"
+          value={f.embedModel}
+          onChange={(e) => setF({ ...f, embedModel: e.target.value })}
+          placeholder="bge-m3"
+        />
+        <div className="modal-actions">
+          <span className="dim">{saved}</span>
+          <button className="btn" onClick={onClose}>
+            取消
+          </button>
+          <button className="btn primary" onClick={save}>
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -330,6 +439,7 @@ function App() {
   const [ctx, setCtx] = useState<{ x: number; y: number; asset: Asset } | null>(null);
   const [searchMode, setSearchMode] = useState<"name" | "semantic">("name");
   const [semanticIds, setSemanticIds] = useState<number[] | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -624,6 +734,9 @@ function App() {
             ✨ 语义
           </button>
         </div>
+        <button className="btn" onClick={() => setShowSettings(true)} title="AI 设置（本地 / 云端 API）">
+          ⚙️
+        </button>
         <button className="btn" onClick={buildIndex} disabled={busy} title="为素材建立语义索引（首次较慢）">
           建索引
         </button>
@@ -807,6 +920,8 @@ function App() {
         aiResult={aiResult}
         onSimilar={onSimilar}
       />
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
       {ctx && (
         <>
