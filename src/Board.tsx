@@ -68,7 +68,7 @@ export default function Board({
     <div className="board-overlay">
       <div className="board-top">
         <span className="brand">
-          📌 参考板 <small>选图摊开 · 拖动/缩放/画框/标注 · 自动保存</small>
+          参考板 <small>拖动 / 缩放 / 标注 · 自动保存</small>
         </span>
         <button className="btn" onClick={onClose}>
           关闭参考板

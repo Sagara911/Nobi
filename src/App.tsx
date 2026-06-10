@@ -237,9 +237,7 @@ function Inspector({
       </div>
 
       <div className="section">
-        <h5>
-          ✨ AI 操作 <span className="dim" style={{ fontWeight: 400 }}>· Gemma 4（本地）</span>
-        </h5>
+        <h5>AI 操作</h5>
         <div className="ai-actions">
           <button className="ai-btn" disabled={!!aiBusy} onClick={() => onAi(asset.id, "prompt")}>
             {aiBusy === "prompt" ? "生成中…" : "反推绘画提示词"}
@@ -257,7 +255,7 @@ function Inspector({
             找相似<span className="hint">语义向量检索视觉/题材近似</span>
           </button>
           <button className="ai-btn" onClick={() => onAddBoard(asset.id)}>
-            📌 加入参考板<span className="hint">摊到无限画布上对着画</span>
+            加入参考板<span className="hint">摊到无限画布上对着画</span>
           </button>
           {cmds.map((c) => (
             <button
@@ -342,7 +340,7 @@ function TagTree({
                   {isOpen ? "▾" : "▸"}
                 </span>
               ) : (
-                <span className="chev placeholder">🏷</span>
+                <span className="chev placeholder">·</span>
               )}
               <span className="ellip" onClick={() => onPick(top)}>
                 {top}
@@ -464,7 +462,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>⚙️ AI 设置</h3>
+        <h3>AI 设置</h3>
         <p className="dim">
           选本地 Ollama（装了 Gemma 就用），或填你自己的 OpenAI 兼容 API（DeepSeek / GPT 等）。留空项回退默认。
         </p>
@@ -558,7 +556,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           placeholder="bge-m3"
         />
         <div className="ext-section">
-          <h4>🧲 浏览器采集插件</h4>
+          <h4>浏览器采集插件</h4>
           <p className="dim">
             在网页<b>右键图片 → 「保存到 Gringotts」</b>，图片连同来源出处一起入库。安装一次即可：
           </p>
@@ -623,7 +621,7 @@ function CmdManagerModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>✨ 自定义 AI 指令</h3>
+        <h3>自定义 AI 指令</h3>
         <p className="dim">
           添加你自己的看图指令（如"分析透视结构""猜画师用了什么笔刷"），保存后出现在详情面板的 AI
           操作列表里。
@@ -778,7 +776,7 @@ function App() {
   // 浏览器扩展采集到新图 → 自动刷新
   useEffect(() => {
     const un = listen<{ name: string }>("collected", async (e) => {
-      setStatus(`🧲 已采集：${e.payload.name}`);
+      setStatus(`已采集：${e.payload.name}`);
       await reload();
       buildThumbs();
     });
@@ -1098,7 +1096,7 @@ function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          🏦 Gringotts <small>古灵阁 · 素材金库</small>
+          Gringotts <small>素材金库</small>
         </div>
         <div className="search">
           <span className="icon">🔍</span>
@@ -1128,7 +1126,7 @@ function App() {
           </button>
         </div>
         <button className="btn" onClick={() => openBoardWith([])} title="打开参考板（无限画布）">
-          📌 参考板
+          参考板
         </button>
         <button className="btn" onClick={() => setShowSettings(true)} title="AI 设置（本地 / 云端 API）">
           ⚙️
@@ -1151,7 +1149,7 @@ function App() {
             className={"nav-item" + (isActive({ kind: "all" }) ? " active" : "")}
             onClick={() => setFilter({ kind: "all" })}
           >
-            📁 <span>全部素材</span>
+            <span>全部素材</span>
             <span className="count">{assets.length}</span>
           </div>
           {missingCount > 0 && (
@@ -1159,7 +1157,7 @@ function App() {
               className={"nav-item warn" + (isActive({ kind: "missing" }) ? " active" : "")}
               onClick={() => setFilter({ kind: "missing" })}
             >
-              ⚠ <span>失效链接</span>
+              <span>失效链接</span>
               <span className="count">{missingCount}</span>
             </div>
           )}
@@ -1171,11 +1169,11 @@ function App() {
             className={"nav-item" + (isActive({ kind: "favorite" }) ? " active" : "")}
             onClick={() => setFilter({ kind: "favorite" })}
           >
-            ⭐ <span>收藏</span>
+            <span>收藏</span>
             <span className="count">{assets.filter((a) => a.favorite).length}</span>
           </div>
           <div className="nav-item" onClick={findDups} title="基于 CLIP 向量检测视觉近似的重复素材">
-            🔁 <span>重复项（点击检测）</span>
+            <span>重复项</span>
           </div>
         </div>
 
@@ -1190,7 +1188,7 @@ function App() {
                 }
                 onClick={() => setFilter({ kind: "folder", value: name })}
               >
-                🗂 <span className="ellip">{name}</span>
+                <span className="ellip">{name}</span>
                 <span className="count">{count}</span>
               </div>
             ))}
@@ -1272,13 +1270,13 @@ function App() {
               打标签
             </button>
             <button className="btn primary" onClick={aiTagBulk} disabled={busy}>
-              ✨ AI 自动打标
+              AI 自动打标
             </button>
             <button
               className="btn"
               onClick={() => openBoardWith(assets.filter((a) => sel.has(a.id)))}
             >
-              📌 加入参考板
+              加入参考板
             </button>
             <button className="btn" onClick={() => setSel(new Set())}>
               清除选择
@@ -1288,7 +1286,7 @@ function App() {
 
         {assets.length === 0 ? (
           <div className="empty big">
-            金库还是空的 🏦
+            金库还是空的
             <div className="placeholder-note">
               点右上角「导入文件夹」选一个图片目录，开始建立你的素材库
             </div>
@@ -1416,7 +1414,7 @@ function App() {
                 setCtx(null);
               }}
             >
-              📂 在资源管理器中显示
+              在资源管理器中显示
             </div>
             <div
               className="ctx-item"
@@ -1425,7 +1423,7 @@ function App() {
                 setCtx(null);
               }}
             >
-              🖼 用默认程序打开
+              用默认程序打开
             </div>
             <div
               className="ctx-item"
@@ -1435,7 +1433,7 @@ function App() {
                 setCtx(null);
               }}
             >
-              📋 复制路径
+              复制路径
             </div>
             <div
               className="ctx-item"
@@ -1446,7 +1444,7 @@ function App() {
                 setCtx(null);
               }}
             >
-              🧦 用 Dobby 处理
+              用 Dobby 处理
             </div>
             <div className="ctx-sep" />
             <div
@@ -1456,7 +1454,7 @@ function App() {
                 setCtx(null);
               }}
             >
-              🗑 从库移除（不删原图）
+              从库移除（不删原图）
             </div>
           </div>
         </>
