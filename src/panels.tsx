@@ -1,7 +1,7 @@
 // Dock 工作区面板（PS 式可拖拽）。
 // 面板通过 DockCtx 取 App 的状态与动作 —— 面板只负责展示与转发交互，不写业务逻辑。
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { VirtuosoGrid } from "react-virtuoso";
 import type { IDockviewPanelProps } from "dockview";
@@ -160,10 +160,32 @@ function LibraryPanel(_p: IDockviewPanelProps) {
   );
 }
 
-function GridPanel(_p: IDockviewPanelProps) {
+function GridPanel(p: IDockviewPanelProps) {
   const d = useDock();
+  const rootRef = useRef<HTMLElement | null>(null);
+
+  // dockview 挪动/重停靠面板时会拆装 DOM，虚拟滚动的测量会过期 →
+  // 面板可见性/尺寸变化后派发合成 scroll 事件，强制 virtuoso 重算（否则空白到下次滚动）
+  useEffect(() => {
+    const nudge = () =>
+      requestAnimationFrame(() => {
+        rootRef.current
+          ?.querySelector(".grid-scroller")
+          ?.dispatchEvent(new Event("scroll"));
+        window.dispatchEvent(new Event("resize"));
+      });
+    nudge();
+    const d1 = p.api.onDidVisibilityChange(nudge);
+    const d2 = p.api.onDidDimensionsChange(nudge);
+    return () => {
+      d1.dispose();
+      d2.dispose();
+    };
+  }, [p.api]);
+
   return (
     <main
+      ref={rootRef}
       className="grid-wrap"
       style={{ ["--thumb-min" as string]: `${d.thumbSize}px` } as React.CSSProperties}
     >
