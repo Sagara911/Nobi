@@ -52,8 +52,9 @@ body {
 
 /* ===== 布局（Dock 工作区） ===== */
 .app { display: flex; flex-direction: column; height: 100vh; }
-.topbar { flex: 0 0 48px; }
-.dock-host { flex: 1; min-height: 0; position: relative; }
+.topbar { flex: 0 0 48px; position: relative; z-index: 40; }
+/* z-index:0 让 dock 内部(tldraw/dockview)的层级被隔离在自己的堆叠上下文里 */
+.dock-host { flex: 1; min-height: 0; position: relative; z-index: 0; }
 .dock-host > div { width: 100%; height: 100%; }
 
 /* dockview 主题适配（贴合极简暗色） */

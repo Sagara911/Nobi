@@ -11,7 +11,6 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl, openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { VirtuosoGrid } from "react-virtuoso";
 import {
   DockviewReact,
@@ -1268,32 +1267,96 @@ function App() {
     };
   }, []);
 
-  // 拖拽导入（Tauri 窗口级文件拖放）
+  // 拖拽导入（HTML5：Tauri 拖放已关闭以便 dockview 面板可拖动）
   useEffect(() => {
-    const un = getCurrentWebview().onDragDropEvent(async (event) => {
-      const t = event.payload.type;
-      if (t === "enter" || t === "over") setDragOver(true);
-      else if (t === "leave") setDragOver(false);
-      else if (t === "drop") {
-        setDragOver(false);
-        const paths = event.payload.paths;
-        if (!paths?.length) return;
+    const isFileDrag = (e: DragEvent) => !!e.dataTransfer?.types?.includes("Files");
+    const onBoard = (e: DragEvent) =>
+      !!(e.target as HTMLElement | null)?.closest?.(".board-canvas");
+
+    const fileToB64 = (f: File): Promise<string> =>
+      new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(",")[1] ?? "");
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entryToFiles = async (entry: any): Promise<File[]> => {
+      if (!entry) return [];
+      if (entry.isFile)
+        return new Promise((res) => entry.file((f: File) => res([f]), () => res([])));
+      if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const out: File[] = [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const readBatch = (): Promise<any[]> =>
+          new Promise((res) => reader.readEntries(res, () => res([])));
+        let batch = await readBatch();
+        while (batch.length) {
+          for (const e of batch) out.push(...(await entryToFiles(e)));
+          batch = await readBatch();
+        }
+        return out;
+      }
+      return [];
+    };
+
+    const EXT_OK = /\.(jpe?g|png|gif|webp|bmp|tiff?|avif|mp4|webm|mov|mkv|avi)$/i;
+
+    const onDragOver = (e: DragEvent) => {
+      if (!isFileDrag(e) || onBoard(e)) return;
+      e.preventDefault();
+      setDragOver(true);
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (e.relatedTarget === null) setDragOver(false);
+    };
+    const onDrop = async (e: DragEvent) => {
+      setDragOver(false);
+      if (!isFileDrag(e) || onBoard(e)) return;
+      e.preventDefault();
+      const items = e.dataTransfer?.items;
+      const files: File[] = [];
+      if (items?.length) {
+        const entries = Array.from(items)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((it) => (it as any).webkitGetAsEntry?.())
+          .filter(Boolean);
+        for (const en of entries) files.push(...(await entryToFiles(en)));
+      } else if (e.dataTransfer?.files) {
+        files.push(...Array.from(e.dataTransfer.files));
+      }
+      const ok = files.filter((f) => EXT_OK.test(f.name));
+      if (!ok.length) {
+        setStatus("拖入内容中没有支持的素材文件");
+        return;
+      }
+      setBusy(true);
+      let done = 0;
+      for (const f of ok) {
         try {
-          setBusy(true);
-          setStatus("正在导入拖入的素材…");
-          const added = await invoke<number>("import_paths", { paths });
-          await reload();
-          setStatus(`已导入 ${added} 张新素材`);
-          await buildThumbs();
-        } catch (err) {
-          setStatus(`导入失败：${err}`);
-        } finally {
-          setBusy(false);
+          const dataB64 = await fileToB64(f);
+          await invoke("import_blob", { name: f.name, dataB64 });
+          done++;
+          setStatus(`导入中… ${done}/${ok.length}`);
+        } catch {
+          /* 跳过失败项 */
         }
       }
-    });
+      await reload();
+      setStatus(`已导入 ${done} 个素材（存于 图片\\Gringotts）`);
+      setBusy(false);
+      buildThumbs();
+    };
+
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
     return () => {
-      un.then((f) => f());
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
     };
   }, [reload, buildThumbs]);
 

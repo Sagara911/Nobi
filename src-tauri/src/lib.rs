@@ -257,6 +257,86 @@ fn import_paths(app: tauri::AppHandle, paths: Vec<String>) -> Result<usize, Stri
     Ok(added)
 }
 
+/// 导入拖入的文件内容（HTML5 拖放拿不到路径，按字节保存到 图片\Gringotts\ 再入库）
+#[tauri::command]
+fn import_blob(app: tauri::AppHandle, name: String, data_b64: String) -> Result<(), String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data_b64)
+        .map_err(|e| e.to_string())?;
+
+    let safe = {
+        let s: String = name
+            .chars()
+            .filter(|c| !"\\/:*?\"<>|".contains(*c))
+            .collect();
+        let s = s.trim().to_string();
+        if s.is_empty() {
+            format!("拖入_{}.png", now_secs())
+        } else {
+            s
+        }
+    };
+    let ext = std::path::Path::new(&safe)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    if !IMAGE_EXTS.contains(&ext.as_str()) && !VIDEO_EXTS.contains(&ext.as_str()) {
+        return Err(format!("不支持的格式：{ext}"));
+    }
+
+    let dir = app
+        .path()
+        .picture_dir()
+        .map(|d| d.join("Gringotts"))
+        .or_else(|_| app.path().app_data_dir().map(|d| d.join("collected")))
+        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let stem = std::path::Path::new(&safe)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("拖入")
+        .to_string();
+    let mut path = dir.join(&safe);
+    let mut n = 1;
+    while path.exists() {
+        path = dir.join(format!("{}_{}.{}", stem, n, ext));
+        n += 1;
+    }
+    fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+
+    let (w, h) = imagesize::size(&path)
+        .map(|s| (s.width as i64, s.height as i64))
+        .unwrap_or((0, 0));
+    let fname = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let conn = open_db(&app)?;
+    conn.execute(
+        "INSERT OR IGNORE INTO assets
+         (path,name,format,width,height,size_bytes,folder,source,author,tags,added_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+        rusqlite::params![
+            path.to_string_lossy().to_string(),
+            fname,
+            ext.to_uppercase(),
+            w,
+            h,
+            bytes.len() as i64,
+            "拖入",
+            "拖入",
+            "",
+            "[]",
+            now_secs()
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// 收藏 / 取消收藏
 #[tauri::command]
 fn set_favorite(app: tauri::AppHandle, id: i64, fav: bool) -> Result<(), String> {
@@ -1289,6 +1369,7 @@ pub fn run() {
             ai_status,
             pull_model,
             import_paths,
+            import_blob,
             set_favorite,
             find_duplicates,
             export_extension,
