@@ -37,11 +37,11 @@ fn handle_collect(app: &tauri::AppHandle, body: &str) -> Result<String, String> 
         _ => "png",
     };
 
-    // 存到 图片/Gringotts（文件透明可见），失败回退应用数据目录
+    // 存到 图片/Nobi（文件透明可见），失败回退应用数据目录
     let dir = app
         .path()
         .picture_dir()
-        .map(|d| d.join("Gringotts"))
+        .map(|d| d.join("Nobi"))
         .or_else(|_| app.path().app_data_dir().map(|d| d.join("collected")))
         .map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -94,7 +94,7 @@ fn handle_collect(app: &tauri::AppHandle, body: &str) -> Result<String, String> 
             w,
             h,
             bytes.len() as i64,
-            "Gringotts采集",
+            "Nobi采集",
             page_url,
             "",
             "[]",
@@ -181,7 +181,7 @@ pub fn start_collect_server(app: tauri::AppHandle) {
                 let _ = req.respond(resp);
             } else {
                 let _ = req.respond(
-                    tiny_http::Response::from_string("Gringotts collect server")
+                    tiny_http::Response::from_string("Nobi collect server")
                         .with_status_code(200),
                 );
             }

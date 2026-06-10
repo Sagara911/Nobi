@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "gringotts",
+  "productName": "nobi",
   "version": "0.1.0",
-  "identifier": "com.gringotts.app",
+  "identifier": "com.nobi.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Gringotts 古灵阁",
+        "title": "Nobi",
         "width": 1280,
         "height": 820,
         "minWidth": 900,

@@ -75,7 +75,7 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
   return (
     <div className="board-canvas">
       <Tldraw
-        persistenceKey="gringotts-refboard"
+        persistenceKey="nobi-refboard"
         onMount={(editor) => {
           editor.user.updateUserPreferences({ colorScheme: "dark" });
 

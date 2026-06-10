@@ -1631,25 +1631,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gringotts"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "image",
- "imagesize",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tiny_http",
- "walkdir",
-]
-
-[[package]]
 name = "gtk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2606,6 +2587,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "418abd1b6d34fbf6cae440dc874771b0525a604428704c76e48b29a5e67b8003"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "nobi"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "image",
+ "imagesize",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tiny_http",
+ "walkdir",
 ]
 
 [[package]]

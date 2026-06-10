@@ -27,7 +27,7 @@ import SettingsModal from "./components/SettingsModal";
 import CmdManagerModal from "./components/CmdManagerModal";
 import "./App.css";
 
-const DOCK_KEY = "gringotts-dock-v1";
+const DOCK_KEY = "nobi-dock-v1";
 
 function App() {
   // ===== 状态 =====
@@ -224,7 +224,7 @@ function App() {
         }
       }
       await reload();
-      setStatus(`已导入 ${done} 个素材（存于 图片\\Gringotts）`);
+      setStatus(`已导入 ${done} 个素材（存于 图片\\Nobi）`);
       setBusy(false);
       buildThumbs();
     };
@@ -703,7 +703,7 @@ function App() {
       title: "帮助(H)",
       items: [
         { label: "GitHub 仓库", action: () => openUrl(REPO_URL) },
-        { label: "关于 Gringotts", action: () => setStatus("Gringotts v0.1.0 · 素材金库") },
+        { label: "关于 Nobi", action: () => setStatus("Nobi v0.1.0 · 素材精灵") },
       ],
     },
   ];
@@ -769,7 +769,7 @@ function App() {
     <DockCtx.Provider value={dockState}>
     <div className="app">
       <header className="topbar">
-        <div className="brand">Gringotts</div>
+        <div className="brand">Nobi</div>
         <MenuBar menus={menus} />
         <button className="btn primary" onClick={handleImport} disabled={busy}>
           {busy ? "处理中…" : "导入文件夹"}

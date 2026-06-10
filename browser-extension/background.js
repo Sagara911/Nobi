@@ -1,10 +1,10 @@
-// Gringotts 采集扩展：右键图片 → 发给本地 Gringotts（127.0.0.1:21420）
+// Nobi 采集扩展：右键图片 → 发给本地 Nobi（127.0.0.1:21420）
 const ENDPOINT = "http://127.0.0.1:21420/collect";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "gringotts-collect",
-    title: "🏦 保存到 Gringotts",
+    title: "🏦 保存到 Nobi",
     contexts: ["image"],
   });
 });
@@ -30,9 +30,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const j = await r.json();
-    notify("已存入 Gringotts ✓", j.name || "");
+    notify("已存入 Nobi ✓", j.name || "");
   } catch (e) {
-    notify("保存失败", String(e) + "（Gringotts 是否在运行？）");
+    notify("保存失败", String(e) + "（Nobi 是否在运行？）");
   }
 });
 

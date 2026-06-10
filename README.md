@@ -1,10 +1,10 @@
-# 🏦 Gringotts（古灵阁）
+# 🧝 Nobi（诺比）
 
 > AI 驱动的本地美术素材库 —— "会用 AI 的 Eagle"。
 > 把图原样存在你硬盘里、能用大白话搜、导入即自动打标签，还能反推 AI 提示词。
 
-与处理工具 **Dobby**（[dobby-aih.pages.dev](https://dobby-aih.pages.dev/)）配套：
-**Gringotts = 素材金库（管理/搜索/AI/参考板），Dobby = 处理工坊。**
+与处理工具 **Dobby**（[dobby-aih.pages.dev](https://dobby-aih.pages.dev/)）是一对小精灵：
+**Dobby 负责处理（工坊），Nobi 负责收纳（素材库 + 搜索 + AI + 画板）。**
 
 ---
 
@@ -58,4 +58,4 @@ npm run tauri build    # 打包
 
 ---
 
-*Dobby 负责处理，Gringotts 负责守护。* 🧦🏦
+*Dobby 负责处理，Nobi 负责收纳。* 🧦🧝

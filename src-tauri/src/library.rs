@@ -91,7 +91,7 @@ pub fn import_paths(app: tauri::AppHandle, paths: Vec<String>) -> Result<usize, 
     Ok(added)
 }
 
-/// 导入拖入的文件内容（HTML5 拖放拿不到路径，按字节保存到 图片\Gringotts\ 再入库）
+/// 导入拖入的文件内容（HTML5 拖放拿不到路径，按字节保存到 图片\Nobi\ 再入库）
 #[tauri::command]
 pub fn import_blob(app: tauri::AppHandle, name: String, data_b64: String) -> Result<(), String> {
     let bytes = base64::engine::general_purpose::STANDARD
@@ -122,7 +122,7 @@ pub fn import_blob(app: tauri::AppHandle, name: String, data_b64: String) -> Res
     let dir = app
         .path()
         .picture_dir()
-        .map(|d| d.join("Gringotts"))
+        .map(|d| d.join("Nobi"))
         .or_else(|_| app.path().app_data_dir().map(|d| d.join("collected")))
         .map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

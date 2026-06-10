@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Gringotts 采集",
+  "name": "Nobi 采集",
   "version": "0.1.0",
-  "description": "右键图片一键存入 Gringotts 素材库（自动记录来源出处）",
+  "description": "右键图片一键存入 Nobi 素材库（自动记录来源出处）",
   "permissions": ["contextMenus", "notifications"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },

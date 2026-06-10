@@ -45,7 +45,7 @@ pub const VIDEO_FORMATS_SQL: &str = "('MP4','WEBM','MOV','MKV','AVI')";
 fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("gringotts.sqlite"))
+    Ok(dir.join("nobi.sqlite"))
 }
 
 pub fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {

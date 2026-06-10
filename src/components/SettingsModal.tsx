@@ -190,7 +190,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className="ext-section">
           <h4>浏览器采集插件</h4>
           <p className="dim">
-            在网页<b>右键图片 → 「保存到 Gringotts」</b>，图片连同来源出处一起入库。安装一次即可：
+            在网页<b>右键图片 → 「保存到 Nobi」</b>，图片连同来源出处一起入库。安装一次即可：
           </p>
           <ol className="ext-steps dim">
             <li>点下方按钮，导出并打开插件文件夹</li>
@@ -199,7 +199,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               ），右上角开启「开发者模式」
             </li>
             <li>点「加载已解压的扩展程序」→ 选刚打开的文件夹</li>
-            <li>保持 Gringotts 运行，去任意网页右键图片即可采集</li>
+            <li>保持 Nobi 运行，去任意网页右键图片即可采集</li>
           </ol>
           <div className="status-row">
             <button className="btn primary" onClick={exportExt}>

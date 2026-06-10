@@ -3,6 +3,7 @@
 import type { Asset } from "./types";
 
 export const DOBBY_URL = "https://dobby-aih.pages.dev/";
+// 仓库尚未在 GitHub 改名；改名后更新此链接（GitHub 旧地址会自动重定向）
 export const REPO_URL = "https://github.com/Sagara911/Gringotts";
 
 const VIDEO_FORMATS = new Set(["MP4", "WEBM", "MOV", "MKV", "AVI"]);

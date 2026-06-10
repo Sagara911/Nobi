@@ -26,16 +26,16 @@ fn cfg(app: &tauri::AppHandle, skey: &str, env: &str, def: &str) -> String {
 /// (base_url, model, api_key) —— 视觉/LLM Provider（默认本地 Ollama）
 pub fn ai_config(app: &tauri::AppHandle) -> (String, String, String) {
     (
-        cfg(app, "ai_base", "GRINGOTTS_AI_BASE", "http://localhost:11434/v1"),
-        cfg(app, "ai_model", "GRINGOTTS_AI_MODEL", "gemma4:12b"),
-        cfg(app, "ai_key", "GRINGOTTS_AI_KEY", "ollama"),
+        cfg(app, "ai_base", "NOBI_AI_BASE", "http://localhost:11434/v1"),
+        cfg(app, "ai_model", "NOBI_AI_MODEL", "gemma4:12b"),
+        cfg(app, "ai_key", "NOBI_AI_KEY", "ollama"),
     )
 }
 
 /// (base_url, model, api_key) —— 文本嵌入 Provider
 pub fn embed_config(app: &tauri::AppHandle) -> (String, String, String) {
     let (base, _m, key) = ai_config(app);
-    let model = cfg(app, "embed_model", "GRINGOTTS_EMBED_MODEL", "bge-m3");
+    let model = cfg(app, "embed_model", "NOBI_EMBED_MODEL", "bge-m3");
     (base, model, key)
 }
 
