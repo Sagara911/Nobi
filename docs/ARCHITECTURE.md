@@ -28,6 +28,26 @@
 外围：browser-extension/（采集插件）｜ Dobby（独立工具站，只联动不合并）
 ```
 
+## 金字塔检验（架构健康的判断标准）
+
+> 正金字塔：越往下越稳定、越标准、越不依赖具体框架；越往上越花哨、越可替换。
+> 功能增多时，重量必须落在中上层（新模块/新面板），**地基（数据层）永不改变性质**。
+
+```
+  可替换 ▲   tldraw / dockview / virtuoso（第三方花活）
+            panels / components（哑组件）
+            App 编排 + api.ts（窄腰边界）
+            Rust 核心模块（原生，按职责隔离）
+  稳定   ▼   SQLite + 原位文件 + 可导出 JSON（纯标准格式，框架全死也无损）
+```
+
+### 倒置风险监控点（发现即处理）
+1. **App.tsx 发胖**：超过 ~800 行 → 按功能切 hooks（useLibrary/useSearch/useAi…）。
+2. **画板数据在 tldraw 私有格式里**（已知地基漏洞）：参考板内容由 tldraw persistenceKey 存浏览器存储。
+   画板功能变重要后 → 把画板快照（editor.store.getSnapshot）定期写入我们的 SQLite。
+3. **向量存 JSON 文本列**：万张级 → sqlite-vec/BLOB（已在下表）。
+4. **重计算漂进 UI 层**：CLIP 是唯一被允许的例外（有下沉路径）；新的重活一律 Rust，不许出现第二个例外。
+
 ## 五条纪律（加功能前自查）
 
 1. **重活进 Rust**：扫盘、数据库、文件 IO、网络服务、批处理——一律后端命令，不写进 React。
