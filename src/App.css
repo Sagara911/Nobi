@@ -403,3 +403,14 @@ body {
   overflow: hidden; margin-bottom: 10px;
 }
 .prog-fill { height: 100%; background: var(--gold); transition: width .25s; }
+
+/* 设置面板：采集插件区块 */
+.ext-section {
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+.ext-section h4 { margin: 0 0 6px; color: var(--gold); font-size: 13px; }
+.ext-steps { margin: 6px 0 10px; padding-left: 18px; font-size: 12px; line-height: 1.8; }
+.ext-steps code {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 0 5px; font-size: 11px;
+}

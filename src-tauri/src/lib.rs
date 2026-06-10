@@ -1055,6 +1055,38 @@ fn handle_collect(app: &tauri::AppHandle, body: &str) -> Result<String, String> 
     Ok(fname)
 }
 
+/// 把内嵌的浏览器扩展文件导出到应用数据目录，返回文件夹路径（供用户在浏览器加载）
+#[tauri::command]
+fn export_extension(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("browser-extension");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::write(
+        dir.join("manifest.json"),
+        include_bytes!("../../browser-extension/manifest.json"),
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(
+        dir.join("background.js"),
+        include_bytes!("../../browser-extension/background.js"),
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(
+        dir.join("icon.png"),
+        include_bytes!("../../browser-extension/icon.png"),
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(
+        dir.join("README.md"),
+        include_bytes!("../../browser-extension/README.md"),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
 /// 后台线程跑一个本地 HTTP 服务（127.0.0.1:21420），接收浏览器扩展的采集请求
 fn start_collect_server(app: tauri::AppHandle) {
     std::thread::spawn(move || {
@@ -1189,7 +1221,8 @@ pub fn run() {
             pull_model,
             import_paths,
             set_favorite,
-            find_duplicates
+            find_duplicates,
+            export_extension
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

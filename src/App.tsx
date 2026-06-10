@@ -417,6 +417,17 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       setSaved(`保存失败：${e}`);
     }
   }
+
+  const [extMsg, setExtMsg] = useState("");
+  async function exportExt() {
+    try {
+      const dir = await invoke<string>("export_extension");
+      await openPath(dir);
+      setExtMsg("插件文件夹已导出并打开 ✓ 按下面步骤在浏览器加载");
+    } catch (e) {
+      setExtMsg(`导出失败：${e}`);
+    }
+  }
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -513,6 +524,28 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           onChange={(e) => setF({ ...f, embedModel: e.target.value })}
           placeholder="bge-m3"
         />
+        <div className="ext-section">
+          <h4>🧲 浏览器采集插件</h4>
+          <p className="dim">
+            在网页<b>右键图片 → 「保存到 Gringotts」</b>，图片连同来源出处一起入库。安装一次即可：
+          </p>
+          <ol className="ext-steps dim">
+            <li>点下方按钮，导出并打开插件文件夹</li>
+            <li>
+              浏览器打开 <code>chrome://extensions</code>（Edge 为 <code>edge://extensions</code>
+              ），右上角开启「开发者模式」
+            </li>
+            <li>点「加载已解压的扩展程序」→ 选刚打开的文件夹</li>
+            <li>保持 Gringotts 运行，去任意网页右键图片即可采集</li>
+          </ol>
+          <div className="status-row">
+            <button className="btn primary" onClick={exportExt}>
+              导出并打开插件文件夹
+            </button>
+            <span className="dim">{extMsg}</span>
+          </div>
+        </div>
+
         <div className="modal-actions">
           <span className="dim">{saved}</span>
           <button className="btn" onClick={onClose}>
