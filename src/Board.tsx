@@ -2,6 +2,8 @@ import { Tldraw, AssetRecordType, type Editor, type TLAssetId } from "tldraw";
 import "tldraw/tldraw.css";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+export type BoardEditor = Editor;
+
 export interface BoardImage {
   id: number;
   path: string;
@@ -10,7 +12,8 @@ export interface BoardImage {
   height: number;
 }
 
-function addImages(editor: Editor, images: BoardImage[]) {
+/** 把一批图按网格摊到画布上 */
+export function addImages(editor: Editor, images: BoardImage[]) {
   if (!images.length) return;
   const MAX = 320;
   const perRow = 4;
@@ -57,26 +60,11 @@ function addImages(editor: Editor, images: BoardImage[]) {
   editor.zoomToFit();
 }
 
-export default function Board({
-  images,
-  onClose,
-}: {
-  images: BoardImage[];
-  onClose: () => void;
-}) {
+/** 画板面板内容（tldraw 无限画布，内容自动保存） */
+export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => void }) {
   return (
-    <div className="board-overlay">
-      <div className="board-top">
-        <span className="brand">
-          参考板 <small>拖动 / 缩放 / 标注 · 自动保存</small>
-        </span>
-        <button className="btn" onClick={onClose}>
-          关闭参考板
-        </button>
-      </div>
-      <div className="board-canvas">
-        <Tldraw persistenceKey="gringotts-refboard" onMount={(editor) => addImages(editor, images)} />
-      </div>
+    <div className="board-canvas">
+      <Tldraw persistenceKey="gringotts-refboard" onMount={onMount} />
     </div>
   );
 }

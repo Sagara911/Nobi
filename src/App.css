@@ -50,20 +50,37 @@ body {
 ::-webkit-scrollbar-thumb { background: #232327; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #303036; }
 
-/* ===== 布局 ===== */
-.app {
-  display: grid;
-  grid-template-rows: 54px 1fr;
-  grid-template-columns: 216px 1fr 288px;
-  grid-template-areas:
-    "topbar topbar topbar"
-    "sidebar grid inspector";
-  height: 100vh;
+/* ===== 布局（Dock 工作区） ===== */
+.app { display: flex; flex-direction: column; height: 100vh; }
+.topbar { flex: 0 0 48px; }
+.dock-host { flex: 1; min-height: 0; position: relative; }
+.dock-host > div { width: 100%; height: 100%; }
+
+/* dockview 主题适配（贴合极简暗色） */
+.dockview-theme-dark {
+  --dv-group-view-background-color: var(--bg);
+  --dv-tabs-and-actions-container-background-color: var(--bg);
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--surface-2);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--surface);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--text-1);
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-3);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-2);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-3);
+  --dv-separator-border: var(--hairline);
+  --dv-paneview-active-outline-color: var(--accent);
+  --dv-drag-over-background-color: rgba(227, 176, 75, 0.08);
+  --dv-drag-over-border-color: var(--accent);
+  --dv-tab-divider-color: transparent;
+  --dv-background-color: var(--bg);
+  font-family: inherit;
 }
+.dockview-theme-dark .dv-tab { font-size: 12px; }
 
 /* ===== 顶栏 ===== */
 .topbar {
-  grid-area: topbar;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -134,10 +151,10 @@ body {
 .mode-toggle:hover { color: var(--text-1); }
 .mode-toggle.on { background: var(--accent); color: #161005; font-weight: 600; }
 
-/* ===== 侧边栏 ===== */
+/* ===== 侧边栏（素材库面板） ===== */
 .sidebar {
-  grid-area: sidebar;
-  border-right: 1px solid var(--hairline);
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
   padding: 14px 10px;
 }
@@ -199,7 +216,7 @@ body {
 
 /* ===== 网格区 ===== */
 .grid-wrap {
-  grid-area: grid;
+  width: 100%; height: 100%;
   padding: 14px 20px 0;
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
@@ -302,8 +319,8 @@ body {
 
 /* ===== 详情面板 ===== */
 .inspector {
-  grid-area: inspector;
-  border-left: 1px solid var(--hairline);
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
   padding: 18px 16px;
 }
@@ -461,17 +478,8 @@ textarea.cfg-input { resize: vertical; font-family: inherit; line-height: 1.5; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* ===== 参考板 ===== */
-.board-overlay {
-  position: fixed; inset: 0; z-index: 80; background: var(--bg);
-  display: flex; flex-direction: column;
-}
-.board-top {
-  height: 50px; flex: 0 0 50px; display: flex; align-items: center;
-  justify-content: space-between; padding: 0 16px;
-  border-bottom: 1px solid var(--hairline);
-}
-.board-canvas { flex: 1; position: relative; min-height: 0; }
+/* ===== 画板面板 ===== */
+.board-canvas { width: 100%; height: 100%; position: relative; min-height: 0; }
 
 /* ===== 拖拽导入遮罩 ===== */
 .drop-overlay {
