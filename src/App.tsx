@@ -319,7 +319,22 @@ function App() {
       }
     }
     if (!restored) defaultLayout(e.api);
+
+    // 所有分组设最小尺寸，防止被拖成"一条缝"导致文字竖排
+    const applyConstraints = () => {
+      for (const g of e.api.groups) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (g.api as any).setConstraints?.({ minimumWidth: 170, minimumHeight: 120 });
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    applyConstraints();
+
     e.api.onDidLayoutChange(() => {
+      applyConstraints();
       try {
         localStorage.setItem(DOCK_KEY, JSON.stringify(e.api.toJSON()));
       } catch {

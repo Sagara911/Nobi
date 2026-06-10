@@ -264,6 +264,13 @@ body {
 /* 顶栏主按钮靠右 */
 .topbar .btn.primary { margin-left: auto; }
 
+/* 极窄面板兜底：内容横向裁切而不是被挤成竖排单字 */
+.sidebar, .inspector { overflow-x: hidden; }
+.sidebar > *, .inspector > * { min-width: 150px; }
+.inspector .empty { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid-head-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+.sort-select { max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+
 /* 可折叠区块标题 */
 .sec-head { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 5px; }
 .sec-head:hover { color: var(--text-1); }
