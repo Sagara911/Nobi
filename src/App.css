@@ -225,9 +225,20 @@ body {
 .grid-head {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 12px; color: var(--text-3); font-size: 12px;
+  gap: 10px; flex-wrap: wrap; min-width: 0;
 }
-.grid-head-right { display: flex; align-items: center; gap: 10px; }
-.status-text { color: var(--text-3); font-size: 12px; }
+.grid-head > span:first-child {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.grid-head-right {
+  display: flex; align-items: center; gap: 10px;
+  min-width: 0; margin-left: auto;
+}
+.status-text {
+  color: var(--text-3); font-size: 12px;
+  min-width: 0; max-width: 240px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .sort-select {
   background: transparent; border: none; color: var(--text-3);
   border-radius: var(--r); padding: 4px 6px; font-size: 12px; outline: none; cursor: pointer;

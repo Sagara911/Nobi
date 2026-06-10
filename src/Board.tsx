@@ -79,6 +79,47 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
         onMount={(editor) => {
           editor.user.updateUserPreferences({ colorScheme: "dark" });
 
+          // 从素材网格拖图进画布：URL 落点生成真正的图片（默认行为是丑陋的书签卡片）
+          editor.registerExternalContentHandler("url", async (content) => {
+            const url = content.url;
+            const isImg = /asset\.localhost|\.(png|jpe?g|gif|webp|bmp|avif)(\?|#|$)/i.test(url);
+            const point = content.point ?? editor.getViewportPageBounds().center;
+            if (!isImg) return; // 参考板只收图片，忽略普通链接（避免书签卡片）
+            const dims = await new Promise<{ w: number; h: number }>((res) => {
+              const img = new Image();
+              img.onload = () => res({ w: img.naturalWidth, h: img.naturalHeight });
+              img.onerror = () => res({ w: 400, h: 400 });
+              img.src = url;
+            });
+            const MAX = 360;
+            const scale = Math.min(1, MAX / Math.max(dims.w, dims.h, 1));
+            const w = Math.max(40, dims.w * scale);
+            const h = Math.max(40, dims.h * scale);
+            const assetId: TLAssetId = AssetRecordType.createId();
+            editor.createAssets([
+              {
+                id: assetId,
+                type: "image",
+                typeName: "asset",
+                props: {
+                  name: "拖入图片",
+                  src: url,
+                  w,
+                  h,
+                  mimeType: "image/png",
+                  isAnimated: false,
+                },
+                meta: {},
+              },
+            ]);
+            editor.createShape({
+              type: "image",
+              x: point.x - w / 2,
+              y: point.y - h / 2,
+              props: { assetId, w, h },
+            });
+          });
+
           // 恢复：本地是空画板而 SQLite 有权威快照时
           (async () => {
             try {
