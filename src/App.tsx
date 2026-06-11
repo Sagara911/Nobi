@@ -4,7 +4,7 @@
 // - 不写展示 JSX 细节 —— 面板在 src/panels.tsx，组件在 src/components/
 // - 不写纯算法 —— 放 src/utils.ts
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
@@ -53,6 +53,7 @@ function App() {
   const [ctx, setCtx] = useState<{ x: number; y: number; asset: Asset } | null>(null);
   const [viewer, setViewer] = useState<{ list: Asset[]; index: number } | null>(null);
   const refSeq = useRef(0); // 悬浮参考浮窗的唯一 label 序号
+  const ctxRef = useRef<HTMLDivElement | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   // 当前合集筛选下的成员 id（filter.kind==="collection" 时由 matchesFilter 用）
   const [collectionMembers, setCollectionMembers] = useState<Set<number>>(new Set());
@@ -406,6 +407,18 @@ function App() {
     setCtx({ x: e.clientX, y: e.clientY, asset: a });
   }
 
+  // 右键菜单贴边夹住：靠近屏幕底/右时向上/左翻，避免被裁切看不见
+  useLayoutEffect(() => {
+    const el = ctxRef.current;
+    if (!el || !ctx) return;
+    const r = el.getBoundingClientRect();
+    const pad = 6;
+    if (ctx.y + r.height > window.innerHeight)
+      el.style.top = `${Math.max(pad, window.innerHeight - r.height - pad)}px`;
+    if (ctx.x + r.width > window.innerWidth)
+      el.style.left = `${Math.max(pad, window.innerWidth - r.width - pad)}px`;
+  }, [ctx]);
+
   function onCardClick(e: React.MouseEvent, id: number) {
     if (e.ctrlKey || e.metaKey) {
       setSel((prev) => {
@@ -612,10 +625,25 @@ function App() {
     }
   }
 
-  // 画板图片右键「找库里相似图」：切到素材网格并跑 CLIP 相似
-  function findSimilarFromBoard(assetId: number) {
+  // 画板图片右键「找库里相似图」：有 assetId 直接 clip_similar；否则用图自身像素算向量反查
+  async function findSimilarFromBoard(arg: { assetId?: number; src: string }) {
     ensurePanel("grid", "素材");
-    onSimilar(assetId);
+    if (arg.assetId != null) {
+      onSimilar(arg.assetId);
+      return;
+    }
+    try {
+      setBusy(true);
+      setStatus("以图找相似…（计算向量）");
+      const ids = await api.clipSearch(await imageVector(arg.src), 80);
+      setSemanticIds(ids);
+      setResultLabel("🔎 相似结果");
+      setStatus(`找相似：${ids.length} 个结果`);
+    } catch (e) {
+      setStatus(`找相似失败：${e}（先点「建索引」让库里图有向量？）`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   // 导出联系表 PDF：一组素材排成带文件名的缩略图网格图集，发给客户/同事
@@ -905,7 +933,7 @@ function App() {
   function openRefWindow(a: Asset) {
     const ratio = a.width && a.height ? a.height / a.width : 0.72;
     const w = 360;
-    const h = Math.round(Math.min(900, Math.max(180, w * ratio))) + 30; // +顶栏高
+    const h = Math.round(Math.min(1200, Math.max(140, w * ratio))); // 按图比例，顶栏是叠加层不占高
     const params = new URLSearchParams({ p: a.path, n: a.name });
     const label = `ref-${a.id}-${refSeq.current++}`;
     const win = new WebviewWindow(label, {
@@ -1131,7 +1159,7 @@ function App() {
               setCtx(null);
             }}
           />
-          <div className="ctx-menu" style={{ left: ctx.x, top: ctx.y }}>
+          <div ref={ctxRef} className="ctx-menu" style={{ left: ctx.x, top: ctx.y }}>
             <div
               className="ctx-item"
               onClick={() => {

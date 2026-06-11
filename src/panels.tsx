@@ -60,7 +60,7 @@ export interface DockState {
   aiRunCustom: (id: number, cmd: AiCmd) => void;
   openCmdMgr: () => void;
   onBoardMount: (ed: BoardEditor) => void;
-  findSimilarFromBoard: (assetId: number) => void;
+  findSimilarFromBoard: (arg: { assetId?: number; src: string }) => void;
   reverseSearchByFile: (file: File) => void;
   collections: Collection[];
   openCollection: (id: number) => void;

@@ -4,6 +4,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -492,8 +493,8 @@ export default function BoardCanvas({
   onSaveAsCollection,
 }: {
   onMount: (editor: Editor) => void;
-  /** 画板图片右键"找库里相似图"：把来源 assetId 抛回 App 调 clip_similar */
-  onFindSimilar?: (assetId: number) => void;
+  /** 画板图片右键"找库里相似图"：有 assetId 走 clip_similar，无则用图自身像素算向量反查 */
+  onFindSimilar?: (arg: { assetId?: number; src: string }) => void;
   /** 把画板上来自库的图（assetId）存成一个合集回库 */
   onSaveAsCollection?: (assetIds: number[]) => void;
 }) {
@@ -575,6 +576,22 @@ export default function BoardCanvas({
   const editingRef = useRef(editing);
   editingRef.current = editing;
   const [menu, setMenu] = useState<P | null>(null);
+  const bdMenuRef = useRef<HTMLDivElement | null>(null);
+  // 右键菜单贴边夹住：靠近视口底/右时整体上移/左移，避免被裁切
+  useLayoutEffect(() => {
+    const el = bdMenuRef.current;
+    if (!el || !menu) return;
+    const r = el.getBoundingClientRect();
+    const pad = 6;
+    let dx = 0;
+    let dy = 0;
+    if (r.bottom > window.innerHeight - pad) dy = window.innerHeight - pad - r.bottom;
+    if (r.right > window.innerWidth - pad) dx = window.innerWidth - pad - r.right;
+    if (r.top + dy < pad) dy = pad - r.top;
+    if (r.left + dx < pad) dx = pad - r.left;
+    if (dx) el.style.left = `${menu.x + dx}px`;
+    if (dy) el.style.top = `${menu.y + dy}px`;
+  }, [menu]);
   const pendingFit = useRef(false);
   const rightPannedRef = useRef(false); // 右键拖动平移后抑制本次菜单
 
@@ -2123,7 +2140,7 @@ export default function BoardCanvas({
 
       {/* 右键菜单 */}
       {menu && (
-        <div className="bd-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(e) => e.stopPropagation()}>
+        <div ref={bdMenuRef} className="bd-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(e) => e.stopPropagation()}>
           {(
             [
               ...(singleImage
@@ -2137,11 +2154,14 @@ export default function BoardCanvas({
                         }
                       },
                     ],
-                    // 来自素材库的图才有 assetId，可回库找相似（CLIP）
-                    ...((selShapes[0] as ImageShape).assetId != null && onFindSimilar
+                    // 找库里相似图：有 assetId 走 clip_similar，无则用图像素算向量反查
+                    ...(onFindSimilar
                       ? [[
                           "找库里相似图", "", true,
-                          () => onFindSimilar((selShapes[0] as ImageShape).assetId!),
+                          () => {
+                            const im = selShapes[0] as ImageShape;
+                            onFindSimilar({ assetId: im.assetId, src: im.src });
+                          },
                         ] as [string, string, boolean, () => void]]
                       : []),
                   ] as [string, string, boolean, () => void][])
