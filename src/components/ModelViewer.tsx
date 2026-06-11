@@ -21,6 +21,7 @@ export default function ModelViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("加载 3D 引擎…");
   const [rotate, setRotate] = useState(true);
+  const [glInfo, setGlInfo] = useState(""); // 实际在跑的 GPU/渲染器，黑屏排查用
   const ctlRef = useRef<{
     reset?: () => void;
     setRotate?: (v: boolean) => void;
@@ -39,12 +40,15 @@ export default function ModelViewer({
         if (!el) return;
         setStatus("加载模型…");
 
-        // preserveDrawingBuffer：截当前帧存封面要用。
-        // alpha:false + 实色背景：WebView2 下透明 canvas 有"截帧正常但屏幕全黑"的合成坑，不透明最稳
+        // WebView2 黑屏三连坑，全部绕开：
+        // - antialias:false —— ANGLE 解析 MSAA 上屏在部分驱动黑屏（截帧正常、屏幕全黑的元凶）
+        // - preserveDrawingBuffer:false —— 不需要（截封面前手动 render 一帧即可），开着另有合成坑
+        // - alpha:false + 实色背景 —— 透明 canvas 合成坑
         const renderer = new THREE.WebGLRenderer({
-          antialias: true,
+          antialias: false,
           alpha: false,
-          preserveDrawingBuffer: true,
+          preserveDrawingBuffer: false,
+          powerPreference: "high-performance",
         });
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
         renderer.setSize(el.clientWidth, el.clientHeight);
@@ -53,6 +57,15 @@ export default function ModelViewer({
           ev.preventDefault();
           setStatus("WebGL 上下文丢失（显卡资源紧张）——关闭重开即可");
         });
+        try {
+          const gl = renderer.getContext();
+          const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+          setGlInfo(
+            String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER))
+          );
+        } catch {
+          /* 拿不到就算了 */
+        }
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x141417);
@@ -261,7 +274,10 @@ export default function ModelViewer({
         <div ref={mountRef} className="mv-canvas">
           {status && <div className="mv-status">{status}</div>}
         </div>
-        <div className="mv-hint">拖动旋转 · 滚轮缩放 · 右键平移</div>
+        <div className="mv-hint">
+          拖动旋转 · 滚轮缩放 · 右键平移
+          {glInfo && <span className="mv-gl"> · {glInfo}</span>}
+        </div>
       </div>
     </div>
   );

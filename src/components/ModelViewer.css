@@ -86,9 +86,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9a9aa2;
-  font-size: 14px;
+  color: #c9c9d2;
+  font-size: 16px;
+  text-align: center;
+  padding: 0 40px;
   pointer-events: none;
+}
+.mv-gl {
+  color: #55555e;
 }
 
 .mv-hint {
