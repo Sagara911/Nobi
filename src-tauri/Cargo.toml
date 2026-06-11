@@ -32,4 +32,5 @@ image = "0.25"
 reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
 tiny_http = "0.12"
+tokio = { version = "1", features = ["time"] }
 

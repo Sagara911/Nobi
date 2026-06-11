@@ -53,16 +53,43 @@ async fn run_vision(app: &tauri::AppHandle, id: i64, prompt: &str) -> Result<Str
     });
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", key))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("请求 AI 服务失败：{e}（确认 Ollama 在运行）"))?;
+    // 429（限频/配额）自动指数退避重试：免费云端额度常见瞬时限频，退避后多半能过
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut attempt = 0u32;
+    let resp = loop {
+        attempt += 1;
+        let resp = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", key))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("请求 AI 服务失败：{e}（确认 Ollama 在运行）"))?;
+        if resp.status().as_u16() == 429 && attempt < MAX_ATTEMPTS {
+            // 优先听服务端 Retry-After（秒），否则指数退避 2s、4s，封顶 20s
+            let wait = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .unwrap_or(2u64.pow(attempt))
+                .min(20);
+            tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+            continue;
+        }
+        break resp;
+    };
     if !resp.status().is_success() {
         let st = resp.status();
         let t = resp.text().await.unwrap_or_default();
+        // 限频/配额：明确告诉用户这不是 Nobi 的 bug，给出可操作建议
+        if st.as_u16() == 429 {
+            return Err(format!(
+                "AI 服务返回 429：请求过于频繁或免费额度已用尽（已自动退避重试 {MAX_ATTEMPTS} 次仍失败）。\
+                建议：降低批量打标频率、稍后再试；或在 AI 设置换用额度更充足/已计费的服务，\
+                免费视觉模型可选「智谱 GLM-4V-Flash」。\n原始信息：{t}"
+            ));
+        }
         // 典型场景：纯文本 API（如 DeepSeek 官方）不认识 image_url 内容块
         if t.contains("image_url") && (t.contains("unknown variant") || t.contains("expected `text`")) {
             return Err("该 API 不支持图像输入：Nobi 的打标/反推/分析需要视觉(VL)模型。\
@@ -134,10 +161,17 @@ pub async fn ai_run(app: tauri::AppHandle, id: i64, mode: String) -> Result<Stri
 /// 批量给多张素材跑自动打标。返回成功数量。
 #[tauri::command]
 pub async fn ai_tag_bulk(app: tauri::AppHandle, ids: Vec<i64>) -> Result<usize, String> {
+    // 云端免费额度普遍限频，批量请求间加节流主动避让 429；本地 Ollama 不限频，无需等待
+    let (base, _m, _k) = ai_config(&app);
+    let is_local = base.contains("localhost") || base.contains("127.0.0.1");
     let mut ok = 0usize;
-    for id in ids {
+    let total = ids.len();
+    for (i, id) in ids.into_iter().enumerate() {
         if ai_run(app.clone(), id, "tags".to_string()).await.is_ok() {
             ok += 1;
+        }
+        if !is_local && i + 1 < total {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
     Ok(ok)

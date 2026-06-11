@@ -99,6 +99,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // 本地 Ollama 模式判定：空地址回退默认本地，localhost/127.0.0.1 也算本地；
+  // 其余视为云端 API（届时 Ollama 检测无意义，banner 不再误报）。
+  const base = (f.aiBase || "").trim();
+  const isLocalBase = base === "" || /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(base);
+
   async function exportExt() {
     try {
       const dir = await api.exportExtension();
@@ -120,7 +125,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         </p>
 
         <div className="ai-status">
-          {!st ? (
+          {!isLocalBase ? (
+            // 云端 API 模式：Ollama 检测无关，不再误报"未检测到 Ollama"
+            <span className="ok-text">
+              ☁ 使用云端 API（{f.aiModel || "未填模型"}）——已跳过本地 Ollama 检测
+            </span>
+          ) : !st ? (
             <span className="dim">检测本地 AI…</span>
           ) : !st.ollama ? (
             <div className="status-row">
