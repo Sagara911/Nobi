@@ -32,3 +32,6 @@ dist-ssr
 *.db
 /thumbnails-cache/
 /test-assets/
+
+# 发布产物（make-latest-json.mjs 拷贝到这）
+release/

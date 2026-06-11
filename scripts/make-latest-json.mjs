@@ -9,7 +9,7 @@
 //        - src-tauri/target/release/bundle/nsis/nobi_<版本>_x64-setup.exe
 //        - src-tauri/target/release/bundle/nsis/latest.json（本脚本产物）
 //      老版本应用启动时即会提示更新。
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -45,5 +45,13 @@ const latest = {
 
 const out = join(nsisDir, "latest.json");
 writeFileSync(out, JSON.stringify(latest, null, 2));
-console.log(`已生成 ${out}`);
-console.log(`上传到 GitHub Release v${version}：setup.exe + latest.json`);
+
+// 把发布所需的两个文件拷到项目根目录 release\（免得在 target 深处找）
+const relDir = join(root, "release");
+mkdirSync(relDir, { recursive: true });
+copyFileSync(setup, join(relDir, `nobi_${version}_x64-setup.exe`));
+copyFileSync(out, join(relDir, "latest.json"));
+console.log(`发布文件已就绪：${relDir}`);
+console.log(`  - nobi_${version}_x64-setup.exe`);
+console.log(`  - latest.json`);
+console.log(`上传到 GitHub Release（tag v${version}）这两个文件即可。`);
