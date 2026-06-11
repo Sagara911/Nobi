@@ -11,8 +11,12 @@ export const isVideo = (a: Asset) => VIDEO_FORMATS.has(a.format);
 const AUDIO_FORMATS = new Set(["MP3", "WAV", "OGG", "FLAC", "M4A", "AAC"]);
 export const isAudio = (a: Asset) => AUDIO_FORMATS.has(a.format);
 
+/** 3D 功能总开关：查看器在部分机器的 WebView2 上黑屏（合成层问题），修复前发版关闭。
+ *  与 Rust 侧 db.rs::ENABLE_3D 保持一致；为 false 时 isModel 恒假，所有 3D 入口消失。 */
+export const ENABLE_3D = false;
+
 const MODEL_FORMATS = new Set(["GLB", "GLTF", "OBJ", "FBX", "STL"]);
-export const isModel = (a: Asset) => MODEL_FORMATS.has(a.format);
+export const isModel = (a: Asset) => ENABLE_3D && MODEL_FORMATS.has(a.format);
 
 /** 普通图片（非视频/音频/3D）：AI 打标、CLIP 找相似、画板、悬浮参考等图像能力只对它开放 */
 export const isImage = (a: Asset) => !isVideo(a) && !isAudio(a) && !isModel(a);

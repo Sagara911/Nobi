@@ -44,6 +44,9 @@ pub const VIDEO_EXTS: &[&str] = &["mp4", "webm", "mov", "mkv", "avi"];
 pub const AUDIO_EXTS: &[&str] = &["mp3", "wav", "ogg", "flac", "m4a", "aac"];
 /// 3D 模型格式：前端 three.js 查看器渲染；缩略图由查看器首帧经 set_thumb 写回
 pub const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx", "stl"];
+/// 3D 功能总开关：查看器在部分机器的 WebView2 上黑屏（合成层问题，见
+/// ModelViewer.tsx），修复前发版默认关闭——导入与前端入口一并隐藏
+pub const ENABLE_3D: bool = false;
 /// 跳过缩略图/配色/CLIP 管线的格式（视频+音频+3D，Rust 渲不了），供 SQL NOT IN 过滤
 pub const MEDIA_FORMATS_SQL: &str = "('MP4','WEBM','MOV','MKV','AVI',\
     'MP3','WAV','OGG','FLAC','M4A','AAC','GLB','GLTF','OBJ','FBX','STL')";
