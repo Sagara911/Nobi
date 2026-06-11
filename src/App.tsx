@@ -6,7 +6,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { check as checkUpdate } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -624,6 +626,38 @@ function App() {
     }
   }
 
+  /** 检查更新：silent=启动时静默（无更新/出错都不打扰），手动检查则有反馈 */
+  async function checkUpdateAction(silent: boolean) {
+    try {
+      const up = await checkUpdate();
+      if (!up) {
+        if (!silent) setStatus("已是最新版本");
+        return;
+      }
+      const go = await ask(
+        `发现新版本 v${up.version}（当前 v${up.currentVersion}），现在下载并安装吗？`,
+        { title: "Nobi 更新", kind: "info" }
+      );
+      if (!go) return;
+      setStatus(`正在下载更新 v${up.version}…`);
+      await up.downloadAndInstall();
+      const restart = await ask("更新已安装，重启 Nobi 生效。现在重启？", {
+        title: "Nobi 更新",
+      });
+      if (restart) await relaunch();
+      else setStatus("更新已就绪，下次启动生效");
+    } catch (e) {
+      if (!silent) setStatus(`检查更新失败：${e}`);
+    }
+  }
+
+  // 启动 3 秒后静默检查一次（开发模式/无发布时静默失败，不打扰）
+  useEffect(() => {
+    const t = setTimeout(() => checkUpdateAction(true), 3000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function exportMcpMenu() {
     try {
       const dir = await api.exportMcpScript();
@@ -780,6 +814,7 @@ function App() {
       title: "帮助(H)",
       items: [
         { label: "GitHub 仓库", action: () => openUrl(REPO_URL) },
+        { label: "检查更新…", action: () => checkUpdateAction(false) },
         { label: "关于 Nobi", action: () => setStatus("Nobi v0.1.0 · 素材精灵") },
       ],
     },
