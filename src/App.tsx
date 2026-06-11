@@ -46,6 +46,11 @@ function App() {
   const [filter, setFilter] = useState<Filter>({ kind: "all" });
   const [busy, setBusy] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
+  const updateRef = useRef<Update | null>(null);
+  const checkingUpdateRef = useRef(false);
+  const lastUpdateCheckRef = useRef(0);
+  const promptedUpdateRef = useRef("");
+  const dismissedUpdateRef = useRef("");
   const [appVersion, setAppVersion] = useState("");
   const [status, setStatus] = useState("");
   const [batchTag, setBatchTag] = useState("");
@@ -75,6 +80,10 @@ function App() {
     setThumbSizeState(n);
     localStorage.setItem("thumb-size", String(n));
   };
+
+  useEffect(() => {
+    updateRef.current = update;
+  }, [update]);
 
   // ===== 数据加载 =====
   const reload = useCallback(async () => {
@@ -827,15 +836,28 @@ function App() {
 
   /** 检查更新：有新版弹自研弹窗；silent=启动静默（无更新/出错不打扰） */
   async function checkUpdateAction(silent: boolean) {
+    const now = Date.now();
+    if (silent && now - lastUpdateCheckRef.current < 30_000) return;
+    if (checkingUpdateRef.current || updateRef.current) return;
+    checkingUpdateRef.current = true;
+    lastUpdateCheckRef.current = now;
     try {
       const up = await checkUpdate();
       if (!up) {
         if (!silent) setStatus("已是最新版本");
         return;
       }
+      if (silent && dismissedUpdateRef.current === up.version) {
+        return;
+      }
+      if (!silent) dismissedUpdateRef.current = "";
+      if (silent && promptedUpdateRef.current === up.version) return;
+      promptedUpdateRef.current = up.version;
       setUpdate(up);
     } catch (e) {
       if (!silent) setStatus(`检查更新失败：${e}`);
+    } finally {
+      checkingUpdateRef.current = false;
     }
   }
 
@@ -844,10 +866,24 @@ function App() {
     getVersion().then(setAppVersion).catch(() => {});
   }, []);
 
-  // 启动 3 秒后静默检查一次（开发模式/无发布时静默失败，不打扰）
+  // 启动后多次静默补查 + 后台轮询：发布包常晚于应用启动几分钟生成。
   useEffect(() => {
-    const t = setTimeout(() => checkUpdateAction(true), 3000);
-    return () => clearTimeout(t);
+    const timers = [3_000, 60_000, 5 * 60_000].map((ms) =>
+      window.setTimeout(() => checkUpdateAction(true), ms)
+    );
+    const interval = window.setInterval(() => checkUpdateAction(true), 30 * 60_000);
+    const onFocus = () => checkUpdateAction(true);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkUpdateAction(true);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1152,7 +1188,15 @@ function App() {
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
-      {update && <UpdateModal update={update} onClose={() => setUpdate(null)} />}
+      {update && (
+        <UpdateModal
+          update={update}
+          onClose={() => {
+            dismissedUpdateRef.current = update.version;
+            setUpdate(null);
+          }}
+        />
+      )}
 
       {viewer && (
         <ImageViewer

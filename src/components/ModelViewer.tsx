@@ -55,16 +55,20 @@ export default function ModelViewer({
         const renderer = new THREE.WebGLRenderer({
           antialias: false,
           alpha: false,
-          preserveDrawingBuffer: false,
+          preserveDrawingBuffer: true,
           powerPreference: "high-performance",
         });
         renderer.setPixelRatio(1); // 每帧读回像素，1x 控带宽足够看模型
         renderer.setSize(el.clientWidth, el.clientHeight);
+        const glCanvas = renderer.domElement;
+        glCanvas.style.cssText =
+          "position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0";
+        el.appendChild(glCanvas);
         const out = document.createElement("canvas"); // 真正可见的 2D 画布
         out.width = renderer.domElement.width;
         out.height = renderer.domElement.height;
-        out.style.width = "100%";
-        out.style.height = "100%";
+        out.style.cssText =
+          "position:absolute;inset:0;width:100%;height:100%;display:none;z-index:1";
         el.appendChild(out);
         // willReadFrequently：强制 CPU 软件画布——该机型 GPU 画布层在置顶浮层里
         // 合成不出来（画板在普通面板里所以没事），CPU 画布与图片/文字同一条上屏路
@@ -76,8 +80,9 @@ export default function ModelViewer({
         let lastSlow = 0;
         const imgOut = document.createElement("img");
         imgOut.draggable = false;
+        if (asset.thumb) imgOut.src = convertFileSrc(asset.thumb);
         imgOut.style.cssText =
-          "width:100%;height:100%;object-fit:contain;display:block;user-select:none";
+          "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;user-select:none;z-index:2";
         el.appendChild(imgOut);
         const setCompatMode = (on: boolean) => {
           out.style.display = on ? "none" : "block";
@@ -217,10 +222,8 @@ export default function ModelViewer({
           import("three").Mesh,
           import("three").Material | import("three").Material[]
         >();
-        const clayMaterial = new THREE.MeshStandardMaterial({
-          color: 0xc4c9d4,
-          roughness: 0.68,
-          metalness: 0.03,
+        const clayMaterial = new THREE.MeshBasicMaterial({
+          color: 0xe0e6f2,
           side: THREE.DoubleSide,
         });
         const materialList = (m: import("three").Material | import("three").Material[]) =>
@@ -340,6 +343,7 @@ export default function ModelViewer({
           clayMaterial.dispose();
           renderer.dispose();
           renderer.forceContextLoss();
+          glCanvas.remove();
           out.remove();
           imgOut.remove();
         };
