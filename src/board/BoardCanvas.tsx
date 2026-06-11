@@ -11,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Arrow as KArrow,
   Ellipse as KEllipse,
@@ -577,23 +578,22 @@ export default function BoardCanvas({
   editingRef.current = editing;
   const [menu, setMenu] = useState<P | null>(null);
   const bdMenuRef = useRef<HTMLDivElement | null>(null);
-  // 右键菜单贴边夹住：菜单是 .bd-root 内的 absolute 元素、被画板容器 overflow:hidden 裁切，
-  // 所以要夹在「画板容器」边界内（不是视口），靠近容器底/右时整体上移/左移。
+  // 右键菜单贴边夹住：菜单 Portal 到 body、fixed 定位，按视口夹（方案1，不再受画板容器裁切）；
+  // 同时判断右侧剩余空间，决定二级菜单向右还是向左飞出。
   useLayoutEffect(() => {
     const el = bdMenuRef.current;
     if (!el || !menu) return;
-    const box = (el.closest(".bd-root") as HTMLElement | null)?.getBoundingClientRect();
-    if (!box) return;
     const r = el.getBoundingClientRect();
     const pad = 6;
     let dx = 0;
     let dy = 0;
-    if (r.bottom > box.bottom - pad) dy = box.bottom - pad - r.bottom;
-    if (r.right > box.right - pad) dx = box.right - pad - r.right;
-    if (r.top + dy < box.top + pad) dy = box.top + pad - r.top;
-    if (r.left + dx < box.left + pad) dx = box.left + pad - r.left;
+    if (r.bottom > window.innerHeight - pad) dy = window.innerHeight - pad - r.bottom;
+    if (r.right > window.innerWidth - pad) dx = window.innerWidth - pad - r.right;
+    if (r.top + dy < pad) dy = pad - r.top;
+    if (r.left + dx < pad) dx = pad - r.left;
     if (dx) el.style.left = `${menu.x + dx}px`;
     if (dy) el.style.top = `${menu.y + dy}px`;
+    el.classList.toggle("flip", r.left + dx + r.width + 170 > window.innerWidth);
   }, [menu]);
   const pendingFit = useRef(false);
   const rightPannedRef = useRef(false); // 右键拖动平移后抑制本次菜单
@@ -1373,9 +1373,10 @@ export default function BoardCanvas({
       }
       const hitId = shapeIdAt(e.target === e.target.getStage() ? null : e.target);
       if (hitId && hitId !== "ui" && !store.isSelected(hitId)) store.setSelection([hitId]);
-      setMenu(clientToStage(e.evt));
+      // 屏幕坐标：菜单 Portal 到 body 用 fixed 定位（脱离画板容器 overflow:hidden 裁切）
+      setMenu({ x: e.evt.clientX, y: e.evt.clientY });
     },
-    [shapeIdAt, store, clientToStage]
+    [shapeIdAt, store]
   );
 
   const pasteShapes = useCallback(
@@ -2141,147 +2142,173 @@ export default function BoardCanvas({
         />
       )}
 
-      {/* 右键菜单 */}
-      {menu && (
-        <div ref={bdMenuRef} className="bd-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(e) => e.stopPropagation()}>
-          {(
-            [
-              ...(singleImage
-                ? ([
-                    [
-                      "裁剪图片", "双击", true,
-                      () => {
-                        const s = store.selectedShapes()[0];
-                        if (s.type === "image") {
-                          setCrop({ id: s.id, rect: s.crop ? { ...s.crop } : { x: 0, y: 0, w: 1, h: 1 } });
-                        }
-                      },
-                    ],
-                    // 找库里相似图：有 assetId 走 clip_similar，无则用图像素算向量反查
-                    ...(onFindSimilar
-                      ? [[
-                          "找库里相似图", "", true,
+      {/* 右键菜单：Portal 到 body + fixed 定位（方案1，脱离画板容器裁切），长列表收进二级飞出菜单 */}
+      {menu &&
+        createPortal(
+          <>
+            <div
+              className="bd-menu-overlay"
+              onPointerDown={() => setMenu(null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu(null);
+              }}
+            />
+            <div ref={bdMenuRef} className="bd-menu bd-menu-fixed" style={{ left: menu.x, top: menu.y }}>
+              {(
+                [
+                  ...(singleImage
+                    ? ([
+                        [
+                          "裁剪图片", "双击", true,
                           () => {
-                            const im = selShapes[0] as ImageShape;
-                            onFindSimilar({ assetId: im.assetId, src: im.src });
+                            const s = store.selectedShapes()[0];
+                            if (s.type === "image") {
+                              setCrop({ id: s.id, rect: s.crop ? { ...s.crop } : { x: 0, y: 0, w: 1, h: 1 } });
+                            }
                           },
-                        ] as [string, string, boolean, () => void]]
-                      : []),
-                  ] as [string, string, boolean, () => void][])
-                : []),
-              ["复制", bindings["edit.copy"], selection.length > 0, () => {
-                boardClipboard = JSON.parse(JSON.stringify(store.selectedShapes()));
-              }],
-              ["粘贴", "Ctrl+V", boardClipboard.length > 0, () => pasteShapes(toPage(menu))],
-              ["创建副本", bindings["edit.duplicate"], selection.length > 0, () => store.duplicate(selection)],
-              ["删除", bindings["edit.delete"], selection.length > 0, () => store.deleteShapes([...selection])],
-              null,
-              ["组合", bindings["edit.group"], selection.length >= 2, groupSelection],
-              ["取消组合", bindings["edit.ungroup"], selShapes.some((s) => s.groupId), ungroupSelection],
-              ["锁定", "", selection.length > 0, () => {
-                store.mutate(() => {
-                  store.shapes = store.shapes.map((s) =>
-                    store.selection.includes(s.id) ? { ...s, locked: true } : s
+                        ],
+                        // 找库里相似图：有 assetId 走 clip_similar，无则用图像素算向量反查
+                        ...(onFindSimilar
+                          ? [[
+                              "找库里相似图", "", true,
+                              () => {
+                                const im = selShapes[0] as ImageShape;
+                                onFindSimilar({ assetId: im.assetId, src: im.src });
+                              },
+                            ] as [string, string, boolean, () => void]]
+                          : []),
+                      ] as [string, string, boolean, () => void][])
+                    : []),
+                  ["复制", bindings["edit.copy"], selection.length > 0, () => {
+                    boardClipboard = JSON.parse(JSON.stringify(store.selectedShapes()));
+                  }],
+                  ["粘贴", "Ctrl+V", boardClipboard.length > 0, () =>
+                    pasteShapes(toPage(clientToStage({ clientX: menu.x, clientY: menu.y })))],
+                  ["创建副本", bindings["edit.duplicate"], selection.length > 0, () => store.duplicate(selection)],
+                  ["删除", bindings["edit.delete"], selection.length > 0, () => store.deleteShapes([...selection])],
+                  null,
+                  ["组合", bindings["edit.group"], selection.length >= 2, groupSelection],
+                  ["取消组合", bindings["edit.ungroup"], selShapes.some((s) => s.groupId), ungroupSelection],
+                  ["锁定", "", selection.length > 0, () => {
+                    store.mutate(() => {
+                      store.shapes = store.shapes.map((s) =>
+                        store.selection.includes(s.id) ? { ...s, locked: true } : s
+                      );
+                      store.selection = [];
+                    });
+                  }],
+                  ["解锁全部", "", store.shapes.some((s) => s.locked), () => {
+                    store.mutate(() => {
+                      store.shapes = store.shapes.map((s) => (s.locked ? { ...s, locked: undefined } : s));
+                    });
+                  }],
+                  null,
+                  {
+                    sub: "排列",
+                    enabled: selection.length > 0,
+                    items: [
+                      ["置于顶层", "Shift+]", true, () => store.reorder([...selection], "front")],
+                      ["上移一层", "]", true, () => store.reorder([...selection], "forward")],
+                      ["下移一层", "[", true, () => store.reorder([...selection], "backward")],
+                      ["置于底层", "Shift+[", true, () => store.reorder([...selection], "back")],
+                    ],
+                  },
+                  {
+                    sub: "对齐",
+                    enabled: selection.length >= 2,
+                    items: [
+                      ["左对齐", "", true, () => alignSel("left")],
+                      ["水平居中", "", true, () => alignSel("centerX")],
+                      ["右对齐", "", true, () => alignSel("right")],
+                      ["顶对齐", "", true, () => alignSel("top")],
+                      ["垂直居中", "", true, () => alignSel("centerY")],
+                      ["底对齐", "", true, () => alignSel("bottom")],
+                      null,
+                      ["水平等距", "", selection.length >= 3, () => distributeSel("x")],
+                      ["垂直等距", "", selection.length >= 3, () => distributeSel("y")],
+                    ],
+                  },
+                  null,
+                  [`导出 PNG${selection.length ? "（选区）" : "（全部）"}`, "", store.shapes.length > 0, () => void exportPng()],
+                  ...(onSaveAsCollection
+                    ? [[
+                        "存成合集回库", "",
+                        store.shapes.some((s) => s.type === "image" && s.assetId != null),
+                        () => {
+                          const ids = [
+                            ...new Set(
+                              store.shapes
+                                .filter((s): s is ImageShape => s.type === "image" && s.assetId != null)
+                                .map((s) => s.assetId!)
+                            ),
+                          ];
+                          onSaveAsCollection(ids);
+                        },
+                      ] as [string, string, boolean, () => void]]
+                    : []),
+                  [`对齐吸附${snapOn ? "（开）" : "（关）"}`, bindings["view.snap"], true, () => {
+                    setSnapOn((v) => !v);
+                    showToast(`对齐吸附 ${snapOn ? "已关闭" : "已开启"}`);
+                  }],
+                  ["全选", bindings["edit.selectAll"], store.shapes.length > 0, () => store.setSelection(store.shapes.filter((s) => !s.locked).map((s) => s.id))],
+                  ["缩放至适合", bindings["view.zoomFit"], true, zoomToFit],
+                ] as (
+                  | [string, string, boolean, () => void]
+                  | null
+                  | { sub: string; enabled: boolean; items: ([string, string, boolean, () => void] | null)[] }
+                )[]
+              ).map((item, i) => {
+                if (item === null) return <div key={i} className="bd-menu-sep" />;
+                if (Array.isArray(item))
+                  return (
+                    <button
+                      key={i}
+                      className="bd-menu-item"
+                      disabled={!item[2]}
+                      onClick={() => {
+                        setMenu(null);
+                        item[3]();
+                      }}
+                    >
+                      <span>{item[0]}</span>
+                      <kbd>{item[1]}</kbd>
+                    </button>
                   );
-                  store.selection = [];
-                });
-              }],
-              ["解锁全部", "", store.shapes.some((s) => s.locked), () => {
-                store.mutate(() => {
-                  store.shapes = store.shapes.map((s) => (s.locked ? { ...s, locked: undefined } : s));
-                });
-              }],
-              null,
-              ["置于顶层", "Shift+]", selection.length > 0, () => store.reorder([...selection], "front")],
-              ["上移一层", "]", selection.length > 0, () => store.reorder([...selection], "forward")],
-              ["下移一层", "[", selection.length > 0, () => store.reorder([...selection], "backward")],
-              ["置于底层", "Shift+[", selection.length > 0, () => store.reorder([...selection], "back")],
-              null,
-              [`导出 PNG${selection.length ? "（选区）" : "（全部）"}`, "", store.shapes.length > 0, () => void exportPng()],
-              ...(onSaveAsCollection
-                ? [[
-                    "存成合集回库", "",
-                    store.shapes.some((s) => s.type === "image" && s.assetId != null),
-                    () => {
-                      const ids = [
-                        ...new Set(
-                          store.shapes
-                            .filter((s): s is ImageShape => s.type === "image" && s.assetId != null)
-                            .map((s) => s.assetId!)
-                        ),
-                      ];
-                      onSaveAsCollection(ids);
-                    },
-                  ] as [string, string, boolean, () => void]]
-                : []),
-              [`对齐吸附${snapOn ? "（开）" : "（关）"}`, bindings["view.snap"], true, () => {
-                setSnapOn((v) => !v);
-                showToast(`对齐吸附 ${snapOn ? "已关闭" : "已开启"}`);
-              }],
-              ["全选", bindings["edit.selectAll"], store.shapes.length > 0, () => store.setSelection(store.shapes.filter((s) => !s.locked).map((s) => s.id))],
-              ["缩放至适合", bindings["view.zoomFit"], true, zoomToFit],
-            ] as ([string, string, boolean, () => void] | null)[]
-          ).map((item, i) =>
-            item === null ? (
-              <div key={i} className="bd-menu-sep" />
-            ) : (
-              <button
-                key={i}
-                className="bd-menu-item"
-                disabled={!item[2]}
-                onClick={() => {
-                  setMenu(null);
-                  item[3]();
-                }}
-              >
-                <span>{item[0]}</span>
-                <kbd>{item[1]}</kbd>
-              </button>
-            )
-          )}
-          {selection.length >= 2 && (
-            <>
-              <div className="bd-menu-sep" />
-              <div className="bd-menu-row">
-                <span>对齐</span>
-                {(
-                  [
-                    ["left", "左", "左对齐"],
-                    ["centerX", "中", "水平居中"],
-                    ["right", "右", "右对齐"],
-                    ["top", "顶", "顶对齐"],
-                    ["centerY", "中", "垂直居中"],
-                    ["bottom", "底", "底对齐"],
-                  ] as const
-                ).map(([m, l, t], i) => (
-                  <button
-                    key={`${m}${i}`}
-                    className="bd-mini"
-                    title={t}
-                    onClick={() => {
-                      setMenu(null);
-                      alignSel(m);
-                    }}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-              {selection.length >= 3 && (
-                <div className="bd-menu-row">
-                  <span>分布</span>
-                  <button className="bd-mini wide" onClick={() => { setMenu(null); distributeSel("x"); }}>
-                    水平等距
-                  </button>
-                  <button className="bd-mini wide" onClick={() => { setMenu(null); distributeSel("y"); }}>
-                    垂直等距
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                // 二级飞出菜单（PS 风格）：悬停展开，方向由 .flip 决定
+                return (
+                  <div key={i} className={"bd-menu-item bd-sub" + (item.enabled ? "" : " sub-disabled")}>
+                    <span>{item.sub}</span>
+                    <kbd>▸</kbd>
+                    {item.enabled && (
+                      <div className="bd-submenu">
+                        {item.items.map((s, j) =>
+                          s === null ? (
+                            <div key={j} className="bd-menu-sep" />
+                          ) : (
+                            <button
+                              key={j}
+                              className="bd-menu-item"
+                              disabled={!s[2]}
+                              onClick={() => {
+                                setMenu(null);
+                                s[3]();
+                              }}
+                            >
+                              <span>{s[0]}</span>
+                              <kbd>{s[1]}</kbd>
+                            </button>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>,
+          document.body
+        )}
 
       {/* 画板切换器 */}
       <div className="bd-boards">

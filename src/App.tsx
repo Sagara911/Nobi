@@ -5,6 +5,7 @@
 // - 不写纯算法 —— 放 src/utils.ts
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
@@ -1149,7 +1150,9 @@ function App() {
         </div>
       )}
 
-      {ctx && (
+      {/* 素材右键菜单：Portal 到 body（方案1），脱离一切容器/层叠上下文裁切 */}
+      {ctx &&
+        createPortal(
         <>
           <div
             className="ctx-overlay"
@@ -1240,7 +1243,8 @@ function App() {
               从库移除（不删原图）
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
     </DockCtx.Provider>

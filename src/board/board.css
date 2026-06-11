@@ -202,6 +202,53 @@
   margin: 4px 6px;
 }
 
+/* Portal 到 body 的菜单（方案1）：fixed 定位脱离画板容器裁切 + 全屏遮罩点击关闭 */
+.bd-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+.bd-menu-fixed {
+  position: fixed;
+  z-index: 1001;
+}
+
+/* ---- 二级飞出菜单（PS 风格，悬停展开） ---- */
+.bd-sub {
+  position: relative;
+}
+.bd-sub > kbd {
+  font-size: 10px;
+}
+.bd-sub.sub-disabled {
+  opacity: 0.35;
+}
+.bd-sub.sub-disabled:hover {
+  background: transparent;
+  color: #e3e3e8;
+}
+.bd-submenu {
+  display: none;
+  position: absolute;
+  left: calc(100% - 2px);
+  top: -5px;
+  min-width: 136px;
+  padding: 4px;
+  flex-direction: column;
+  background: #1d1d20;
+  border: 1px solid #2c2c31;
+  border-radius: 11px;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.45);
+}
+.bd-sub:hover > .bd-submenu {
+  display: flex;
+}
+/* 屏幕右侧放不下时向左飞出（.flip 由菜单夹边逻辑设置） */
+.bd-menu.flip .bd-submenu {
+  left: auto;
+  right: calc(100% - 2px);
+}
+
 /* ---- 菜单内对齐/分布行 ---- */
 .bd-menu-row {
   display: flex;
