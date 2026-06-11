@@ -97,6 +97,9 @@ interface Style {
   size: SizeKey;
   fill: FillKey;
   brush: BrushKey;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
 }
 
 type Session =
@@ -344,6 +347,10 @@ const ShapeView = memo(
             text={s.text}
             fontSize={s.fontSize}
             fontFamily={FONT_FAMILY}
+            fontStyle={
+              [s.italic && "italic", s.bold && "bold"].filter(Boolean).join(" ") || "normal"
+            }
+            textDecoration={s.underline ? "underline" : undefined}
             fill={colorHex(s.color)}
             width={s.w}
             align={s.align ?? "left"}
@@ -473,11 +480,15 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
   const [style, setStyle] = useState<Style>(() => {
     try {
       const s = JSON.parse(localStorage.getItem(STYLE_KEY) || "");
-      if (s?.color) return { brush: "pen", ...s }; // 旧版样式无 brush 字段
+      // 旧版样式可能缺新字段，用默认值垫底
+      if (s?.color) return { brush: "pen", bold: false, italic: false, underline: false, ...s };
     } catch {
       /* ignore */
     }
-    return { color: "blue", size: "m", fill: "none", brush: "pen" };
+    return {
+      color: "blue", size: "m", fill: "none", brush: "pen",
+      bold: false, italic: false, underline: false,
+    };
   });
   const styleRef = useRef(style);
   styleRef.current = style;
@@ -1407,6 +1418,26 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
     });
   }, [store]);
 
+  // ---------- 文本样式开关（加粗/斜体/下划线）：作用于选中文本，同时记为新建默认 ----------
+  const toggleTextStyle = useCallback(
+    (k: "bold" | "italic" | "underline") => {
+      const texts = store.selectedShapes().filter((s): s is TextShape => s.type === "text");
+      const cur = texts.length ? texts.every((t) => !!t[k]) : !!styleRef.current[k];
+      const next = !cur;
+      setStyle((s) => ({ ...s, [k]: next }));
+      if (texts.length) {
+        store.mutate(() => {
+          store.shapes = store.shapes.map((s) =>
+            store.selection.includes(s.id) && s.type === "text"
+              ? { ...s, [k]: next || undefined }
+              : s
+          );
+        });
+      }
+    },
+    [store]
+  );
+
   // ---------- 导出 PNG（选区优先，否则全部；离屏克隆不动正式画布） ----------
   const exportPng = useCallback(async () => {
     const targets = store.selection.length ? store.selectedShapes() : store.shapes;
@@ -1524,6 +1555,11 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
         }
       }
       // 固定快捷键（不可改）
+      if (ctrl && (key === "b" || key === "i" || key === "u")) {
+        e.preventDefault();
+        toggleTextStyle(key === "b" ? "bold" : key === "i" ? "italic" : "underline");
+        return;
+      }
       if (ctrl && key === "y") {
         store.redo();
         e.preventDefault();
@@ -1558,7 +1594,7 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
         return;
       }
     },
-    [store, zoomAt, zoomToFit, size, commitCrop, groupSelection, ungroupSelection, showToast]
+    [store, zoomAt, zoomToFit, size, commitCrop, groupSelection, ungroupSelection, showToast, toggleTextStyle]
   );
   const onKeyUp = useCallback((e: React.KeyboardEvent) => {
     if (e.key === " ") {
@@ -1644,6 +1680,7 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
       editingShape = {
         id: "", type: "text", x: editing.x, y: editing.y, rotation: 0, opacity: 1,
         text: "", color: style.color, fontSize: FONT_PX[style.size],
+        bold: style.bold, italic: style.italic, underline: style.underline,
       };
     }
   }
@@ -1679,6 +1716,9 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
         {
           id: newId(), type: "text", x: ed.x, y: ed.y, rotation: 0, opacity: 1,
           text, color: st.color, fontSize: FONT_PX[st.size],
+          bold: st.bold || undefined,
+          italic: st.italic || undefined,
+          underline: st.underline || undefined,
         },
       ]);
     }
@@ -1716,6 +1756,10 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
   const dispBrush = selDraws.length
     ? allSame(selDraws.map((s) => s.brush ?? "pen"))
     : style.brush;
+  const selTexts = selShapes.filter((s): s is TextShape => s.type === "text");
+  const showTextStyle = tool === "text" || selTexts.length > 0 || !!editing;
+  const dispTS = (k: "bold" | "italic" | "underline") =>
+    selTexts.length ? selTexts.every((t) => !!t[k]) : !!style[k];
 
   const previewDraw: DrawShape | null =
     sess?.mode === "draw"
@@ -1942,6 +1986,14 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
             if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
               e.preventDefault();
               commitText();
+            } else if (
+              (e.ctrlKey || e.metaKey) &&
+              ["b", "i", "u"].includes(e.key.toLowerCase())
+            ) {
+              // 编辑中也能切换加粗/斜体/下划线
+              e.preventDefault();
+              const k = e.key.toLowerCase();
+              toggleTextStyle(k === "b" ? "bold" : k === "i" ? "italic" : "underline");
             }
             e.stopPropagation();
           }}
@@ -1953,6 +2005,9 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
             lineHeight: 1.35,
             color: colorHex(editingShape.color),
             fontFamily: FONT_FAMILY,
+            fontWeight: editingShape.bold ? 700 : 400,
+            fontStyle: editingShape.italic ? "italic" : "normal",
+            textDecoration: editingShape.underline ? "underline" : "none",
             textAlign: editingShape.align ?? "left",
             transform: `rotate(${editingShape.rotation}deg)`,
             transformOrigin: "left top",
@@ -2217,6 +2272,26 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
               </button>
             ))}
           </div>
+          {showTextStyle && (
+            <div className="bd-row">
+              {(
+                [
+                  ["bold", "B", "加粗 (Ctrl+B)"],
+                  ["italic", "I", "斜体 (Ctrl+I)"],
+                  ["underline", "U", "下划线 (Ctrl+U)"],
+                ] as const
+              ).map(([k, label, title]) => (
+                <button
+                  key={k}
+                  className={`bd-chip ts-${k} ${dispTS(k) ? "on" : ""}`}
+                  title={title}
+                  onClick={() => toggleTextStyle(k)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {showFill && (
             <div className="bd-row">
               {(

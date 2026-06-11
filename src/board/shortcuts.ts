@@ -39,6 +39,7 @@ export const HOTKEYS: HotkeyDef[] = [
   { id: "fixed.order", label: "层级上移 / 下移", def: "] / [（Shift = 顶/底）", fixed: true },
   { id: "fixed.clone", label: "拖拽出副本", def: "Alt + 拖动", fixed: true },
   { id: "fixed.shift", label: "反转等比 / 旋转 15° 吸附", def: "Shift（变换中）", fixed: true },
+  { id: "fixed.textstyle", label: "文本加粗 / 斜体 / 下划线", def: "Ctrl+B / I / U", fixed: true },
   { id: "fixed.crop", label: "裁剪图片", def: "双击图片，Enter 提交 / Esc 取消", fixed: true },
   { id: "fixed.escape", label: "取消 / 清除选择", def: "Esc", fixed: true },
 ];

@@ -155,6 +155,9 @@
   background: #2f80ed;
   color: #fff;
 }
+.bd-chip.ts-bold { font-weight: 800; }
+.bd-chip.ts-italic { font-style: italic; font-family: Georgia, serif; }
+.bd-chip.ts-underline { text-decoration: underline; }
 
 /* ---- 右键菜单 ---- */
 .bd-menu {

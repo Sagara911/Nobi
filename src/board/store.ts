@@ -87,6 +87,9 @@ export interface TextShape extends ShapeBase {
   fontSize: number;
   w?: number; // 换行宽度，无则自适应
   align?: "left" | "center";
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
 }
 
 export type BoardShape = ImageShape | DrawShape | GeoShape | ArrowShape | TextShape;
