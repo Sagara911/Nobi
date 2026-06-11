@@ -4,6 +4,8 @@ import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import type { AiCfg, AiStatus } from "../types";
 import * as api from "../api";
 
+// 注意：Nobi 的打标/反推/分析都要"看图"，预设必须是支持图片输入的视觉(VL)模型。
+// DeepSeek 官方 API 目前纯文本（deepseek-vl2 未开放 API），故不提供其预设。
 const AI_PRESETS: Record<string, AiCfg> = {
   "本地 Ollama (Gemma 4)": {
     aiBase: "http://localhost:11434/v1",
@@ -11,11 +13,23 @@ const AI_PRESETS: Record<string, AiCfg> = {
     aiKey: "ollama",
     embedModel: "bge-m3",
   },
-  DeepSeek: {
-    aiBase: "https://api.deepseek.com/v1",
-    aiModel: "deepseek-vl2",
+  "智谱 GLM-4V-Flash（免费）": {
+    aiBase: "https://open.bigmodel.cn/api/paas/v4",
+    aiModel: "glm-4v-flash",
     aiKey: "",
-    embedModel: "bge-m3",
+    embedModel: "embedding-3",
+  },
+  "硅基流动 Qwen2.5-VL": {
+    aiBase: "https://api.siliconflow.cn/v1",
+    aiModel: "Qwen/Qwen2.5-VL-32B-Instruct",
+    aiKey: "",
+    embedModel: "BAAI/bge-m3",
+  },
+  "阿里云百炼 Qwen-VL": {
+    aiBase: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    aiModel: "qwen-vl-plus",
+    aiKey: "",
+    embedModel: "text-embedding-v3",
   },
   OpenAI: {
     aiBase: "https://api.openai.com/v1",
@@ -94,8 +108,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>AI 设置</h3>
         <p className="dim">
-          选本地 Ollama（装了 Gemma 就用），或填你自己的 OpenAI 兼容 API（DeepSeek / GPT
-          等）。留空项回退默认。
+          选本地 Ollama（装了 Gemma 就用），或填 OpenAI 兼容 API——必须是支持图片输入的
+          视觉模型（GLM-4V / Qwen-VL / GPT-4o 等；DeepSeek 官方 API 纯文本，看不了图）。
+          留空项回退默认。
         </p>
 
         <div className="ai-status">

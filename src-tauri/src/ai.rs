@@ -63,6 +63,13 @@ async fn run_vision(app: &tauri::AppHandle, id: i64, prompt: &str) -> Result<Str
     if !resp.status().is_success() {
         let st = resp.status();
         let t = resp.text().await.unwrap_or_default();
+        // 典型场景：纯文本 API（如 DeepSeek 官方）不认识 image_url 内容块
+        if t.contains("image_url") && (t.contains("unknown variant") || t.contains("expected `text`")) {
+            return Err("该 API 不支持图像输入：Nobi 的打标/反推/分析需要视觉(VL)模型。\
+                请在 AI 设置里换支持看图的服务（预设里有：智谱 GLM-4V-Flash 免费、\
+                硅基流动/阿里云 Qwen-VL、GPT-4o-mini），DeepSeek 官方 API 目前纯文本。"
+                .to_string());
+        }
         return Err(format!("AI 服务返回 {st}: {t}"));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
