@@ -46,6 +46,8 @@ export interface ImageShape extends ShapeBase {
   h: number;
   src: string;
   name: string;
+  /** 来源素材库的 asset id（从库拖上画板时记下，供"找库里相似图"回查；旧数据/外部拖入无） */
+  assetId?: number;
   /** 缩略图地址（LOD：缩小/远观时加载它省内存，放大看细节才换 src 原图） */
   thumbSrc?: string;
   /** 归一化裁剪框（0-1，相对原图），无裁剪为 undefined */
@@ -667,6 +669,7 @@ export class Editor {
         id: newId(), type: "image", x, y, rotation: 0, opacity: 1,
         w, h, src: imageSrc(img.path), name: img.name,
         thumbSrc: img.thumb ? imageSrc(img.thumb) : undefined,
+        assetId: img.id,
       });
       col++;
       rowH = Math.max(rowH, h);

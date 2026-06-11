@@ -60,6 +60,7 @@ export interface DockState {
   aiRunCustom: (id: number, cmd: AiCmd) => void;
   openCmdMgr: () => void;
   onBoardMount: (ed: BoardEditor) => void;
+  findSimilarFromBoard: (assetId: number) => void;
   thumbSize: number;
   setThumbSize: (n: number) => void;
   query: string;
@@ -414,7 +415,7 @@ function InspectorPanel(_p: IDockviewPanelProps) {
 
 function BoardPanel(_p: IDockviewPanelProps) {
   const d = useDock();
-  return <BoardCanvas onMount={d.onBoardMount} />;
+  return <BoardCanvas onMount={d.onBoardMount} onFindSimilar={d.findSimilarFromBoard} />;
 }
 
 export const DOCK_COMPONENTS = {

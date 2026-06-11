@@ -483,7 +483,14 @@ const PRESET_COLORS = [
 let boardClipboard: BoardShape[] = [];
 
 // ---------- 主组件 ----------
-export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => void }) {
+export default function BoardCanvas({
+  onMount,
+  onFindSimilar,
+}: {
+  onMount: (editor: Editor) => void;
+  /** 画板图片右键"找库里相似图"：把来源 assetId 抛回 App 调 clip_similar */
+  onFindSimilar?: (assetId: number) => void;
+}) {
   const editorRef = useRef<Editor | null>(null);
   if (!editorRef.current) editorRef.current = new Editor();
   const editor = editorRef.current;
@@ -2115,15 +2122,24 @@ export default function BoardCanvas({ onMount }: { onMount: (editor: Editor) => 
           {(
             [
               ...(singleImage
-                ? [[
-                    "裁剪图片", "双击", true,
-                    () => {
-                      const s = store.selectedShapes()[0];
-                      if (s.type === "image") {
-                        setCrop({ id: s.id, rect: s.crop ? { ...s.crop } : { x: 0, y: 0, w: 1, h: 1 } });
-                      }
-                    },
-                  ] as [string, string, boolean, () => void]]
+                ? ([
+                    [
+                      "裁剪图片", "双击", true,
+                      () => {
+                        const s = store.selectedShapes()[0];
+                        if (s.type === "image") {
+                          setCrop({ id: s.id, rect: s.crop ? { ...s.crop } : { x: 0, y: 0, w: 1, h: 1 } });
+                        }
+                      },
+                    ],
+                    // 来自素材库的图才有 assetId，可回库找相似（CLIP）
+                    ...((selShapes[0] as ImageShape).assetId != null && onFindSimilar
+                      ? [[
+                          "找库里相似图", "", true,
+                          () => onFindSimilar((selShapes[0] as ImageShape).assetId!),
+                        ] as [string, string, boolean, () => void]]
+                      : []),
+                  ] as [string, string, boolean, () => void][])
                 : []),
               ["复制", bindings["edit.copy"], selection.length > 0, () => {
                 boardClipboard = JSON.parse(JSON.stringify(store.selectedShapes()));

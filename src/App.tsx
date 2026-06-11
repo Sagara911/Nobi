@@ -570,6 +570,12 @@ function App() {
     }
   }
 
+  // 画板图片右键「找库里相似图」：切到素材网格并跑 CLIP 相似
+  function findSimilarFromBoard(assetId: number) {
+    ensurePanel("grid", "素材");
+    onSimilar(assetId);
+  }
+
   async function buildIndex() {
     try {
       setBusy(true);
@@ -873,6 +879,7 @@ function App() {
     aiRunCustom: aiRunCustomAction,
     openCmdMgr: () => setShowCmdMgr(true),
     onBoardMount,
+    findSimilarFromBoard,
     thumbSize,
     setThumbSize,
     query,
