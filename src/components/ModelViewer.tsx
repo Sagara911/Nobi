@@ -44,8 +44,10 @@ export default function ModelViewer({
         // 一块普通 2D 画布显示。实测该机型 GL 渲染/截帧全好、唯独合成上屏黑屏（GPU 渲染 ×
         // 软件合成的错配）；2D 画布与画板(Konva)同一条合成路径，必通。不直接上屏后
         // MSAA 抗锯齿也能放心开回来。
+        // antialias 必须关：MSAA 默认缓冲上裸 readPixels 在 ANGLE 会读出全零
+        // （toDataURL 会强制解析所以封面一直正常）——这正是读回路黑屏的最后一环
         const renderer = new THREE.WebGLRenderer({
-          antialias: true,
+          antialias: false,
           alpha: false,
           preserveDrawingBuffer: false,
           powerPreference: "high-performance",
@@ -78,9 +80,32 @@ export default function ModelViewer({
           imgData = new ImageData(fw, fh);
         };
         realloc();
-        const blit = () => {
+        // 兜底机制：readPixels 若连续读回全零（个别驱动怪癖），自动切换到
+        // toDataURL→drawImage 慢速通道（生成封面用的就是它，实证 100% 可显示）
+        let zeroFrames = 0;
+        let slowMode = false;
+        let lastSlow = 0;
+        const slowImg = new Image();
+        slowImg.onload = () => {
+          octx.clearRect(0, 0, out.width, out.height);
+          octx.drawImage(slowImg, 0, 0);
+        };
+        const blit = (now: number) => {
           if (!imgData || !fw || !fh) return;
+          if (slowMode) {
+            if (now - lastSlow < 100) return; // ~10fps，PNG 编码代价高
+            lastSlow = now;
+            slowImg.src = renderer.domElement.toDataURL("image/png");
+            return;
+          }
           glc.readPixels(0, 0, fw, fh, glc.RGBA, glc.UNSIGNED_BYTE, readBuf);
+          // 自检：背景色 #141417 决定了正常帧中心像素必非零；连续全零=读回坏了
+          const c = ((fh >> 1) * fw + (fw >> 1)) * 4;
+          if (readBuf[c] + readBuf[c + 1] + readBuf[c + 2] === 0) {
+            if (++zeroFrames > 12) slowMode = true;
+            return;
+          }
+          zeroFrames = 0;
           const row = fw * 4;
           for (let y = 0; y < fh; y++) {
             // readPixels 自下而上，画布自上而下：逐行翻转
@@ -192,7 +217,7 @@ export default function ModelViewer({
             controls.update();
             renderer.render(scene, camera);
             // 同一任务内立刻读回（无 preserveDrawingBuffer 也安全）
-            blit();
+            blit(performance.now());
           } catch (err) {
             setStatus(`渲染中断：${err instanceof Error ? err.message : err}`);
             return; // 出错就停循环，把原因亮出来
