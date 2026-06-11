@@ -1,10 +1,10 @@
 // 悬浮参考浮窗：从库里把一张图"拉到桌面"，无边框/透明/永远置顶，浮在绘图软件上方。
 // 这是独立的第二个 WebviewWindow（label=ref-*），main.tsx 按 #ref 路由到这里。
 // 画师用法：拖动随便摆、拽右下角缩放、滑杆压透明度别挡画布、镜像/灰度换看法。
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { PhysicalSize } from "@tauri-apps/api/dpi";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import "./RefWindow.css";
 
 function parseHash() {
@@ -27,34 +27,40 @@ export default function RefWindow() {
   const [opacity, setOpacity] = useState(1);
   const [flip, setFlip] = useState(false);
   const [gray, setGray] = useState(false);
-  const aspect = useRef(0); // 图片 高/宽，载入后用于锁窗口比例（消灭透明留白，缩放手柄始终贴图右下角）
+  const aspect = useRef(0); // 图片 高/宽，载入后用于锁比例缩放（消灭透明留白，手柄始终贴图右下角）
   // 惰性取窗：放进事件回调里，避免无 Tauri 运行时（如纯浏览器预览）渲染期就抛错
   const win = () => getCurrentWebviewWindow();
 
-  // 锁定窗口宽高比 = 图片比例：缩放时按当前宽度回算高度，图始终铺满、无留白
-  useEffect(() => {
-    let un = () => {};
-    let busy = false;
-    try {
-      const w = getCurrentWebviewWindow();
-      w.onResized(({ payload }) => {
-        const a = aspect.current;
-        if (!a || busy) return;
-        const desiredH = Math.round(payload.width * a);
-        if (Math.abs(payload.height - desiredH) > 2) {
-          busy = true;
-          void w.setSize(new PhysicalSize(payload.width, desiredH)).finally(() => {
-            busy = false;
-          });
-        }
-      })
-        .then((f) => (un = f))
-        .catch(() => {});
-    } catch {
-      /* 无 Tauri 运行时（预览）忽略 */
-    }
-    return () => un();
-  }, []);
+  // 自驱缩放：手柄拖动时我们直接 setSize（不走 OS startResizeDragging，避免与系统拖拽
+  // 抢节奏造成闪烁/抖动）；宽度跟手、高度按图片比例回算，rAF 合帧限流。
+  const onResizeGrip = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.screenX;
+    const startW = window.innerWidth; // 逻辑像素
+    const a = aspect.current || window.innerHeight / Math.max(1, window.innerWidth);
+    const w = win();
+    const grip = e.currentTarget;
+    grip.setPointerCapture(e.pointerId);
+    let nextW = startW;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      void w.setSize(new LogicalSize(Math.round(nextW), Math.round(nextW * a)));
+    };
+    const move = (ev: PointerEvent) => {
+      nextW = Math.max(80, startW + (ev.screenX - startX));
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    const up = () => {
+      if (raf) cancelAnimationFrame(raf);
+      void w.setSize(new LogicalSize(Math.round(nextW), Math.round(nextW * a))); // 落定最终尺寸
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   // 在图/标题上按下即拖整窗（系统级移动）
   const startDrag = (e: React.PointerEvent) => {
@@ -114,13 +120,7 @@ export default function RefWindow() {
       </div>
 
       {/* 右下角缩放手柄 */}
-      <div
-        className="rw-resize"
-        title="拖动缩放"
-        onPointerDown={(e) => {
-          if (e.button === 0) void win().startResizeDragging("SouthEast");
-        }}
-      />
+      <div className="rw-resize" title="拖动缩放" onPointerDown={onResizeGrip} />
     </div>
   );
 }
