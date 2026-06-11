@@ -577,18 +577,21 @@ export default function BoardCanvas({
   editingRef.current = editing;
   const [menu, setMenu] = useState<P | null>(null);
   const bdMenuRef = useRef<HTMLDivElement | null>(null);
-  // 右键菜单贴边夹住：靠近视口底/右时整体上移/左移，避免被裁切
+  // 右键菜单贴边夹住：菜单是 .bd-root 内的 absolute 元素、被画板容器 overflow:hidden 裁切，
+  // 所以要夹在「画板容器」边界内（不是视口），靠近容器底/右时整体上移/左移。
   useLayoutEffect(() => {
     const el = bdMenuRef.current;
     if (!el || !menu) return;
+    const box = (el.closest(".bd-root") as HTMLElement | null)?.getBoundingClientRect();
+    if (!box) return;
     const r = el.getBoundingClientRect();
     const pad = 6;
     let dx = 0;
     let dy = 0;
-    if (r.bottom > window.innerHeight - pad) dy = window.innerHeight - pad - r.bottom;
-    if (r.right > window.innerWidth - pad) dx = window.innerWidth - pad - r.right;
-    if (r.top + dy < pad) dy = pad - r.top;
-    if (r.left + dx < pad) dx = pad - r.left;
+    if (r.bottom > box.bottom - pad) dy = box.bottom - pad - r.bottom;
+    if (r.right > box.right - pad) dx = box.right - pad - r.right;
+    if (r.top + dy < box.top + pad) dy = box.top + pad - r.top;
+    if (r.left + dx < box.left + pad) dx = box.left + pad - r.left;
     if (dx) el.style.left = `${menu.x + dx}px`;
     if (dy) el.style.top = `${menu.y + dy}px`;
   }, [menu]);
