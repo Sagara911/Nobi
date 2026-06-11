@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "ref-window",
+  "description": "悬浮参考浮窗（ref-*）：可拖拽移动 / 右下角缩放 / 关闭 / 置顶",
+  "windows": ["ref-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-close",
+    "core:window:allow-set-always-on-top"
+  ]
+}

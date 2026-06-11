@@ -1,0 +1,98 @@
+/* 悬浮参考浮窗样式。透明背景只在 ref 窗生效（body.ref-window），不影响主程序。 */
+body.ref-window,
+body.ref-window #root {
+  margin: 0;
+  height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+}
+
+.rw-root {
+  position: fixed;
+  inset: 0;
+}
+
+.rw-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: move; /* 整图可拖动整窗 */
+}
+
+/* 顶栏：悬停才显，不挡画 */
+.rw-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  background: rgba(18, 18, 22, 0.74);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.rw-root:hover .rw-bar {
+  opacity: 1;
+}
+.rw-name {
+  flex: 1;
+  min-width: 0;
+  color: #dddde2;
+  font: 12px "Segoe UI", "Microsoft YaHei", sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: move;
+}
+.rw-bar button {
+  background: #2a2a30;
+  color: #e7e7ea;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rw-bar button:hover {
+  background: #34343c;
+}
+.rw-bar button.on {
+  background: #3b6fe0;
+  border-color: #5a86f0;
+  color: #fff;
+}
+.rw-close:hover {
+  background: #5a2a2a !important;
+  color: #ff9b9b;
+}
+.rw-opacity {
+  width: 62px;
+  cursor: pointer;
+}
+
+/* 右下角缩放手柄 */
+.rw-resize {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+}
+.rw-resize::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-bottom: 9px solid rgba(255, 255, 255, 0.55);
+}

@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
@@ -51,6 +52,7 @@ function App() {
   const [sortKey, setSortKey] = useState<SortKey>("time");
   const [ctx, setCtx] = useState<{ x: number; y: number; asset: Asset } | null>(null);
   const [viewer, setViewer] = useState<{ list: Asset[]; index: number } | null>(null);
+  const refSeq = useRef(0); // 悬浮参考浮窗的唯一 label 序号
   const [collections, setCollections] = useState<Collection[]>([]);
   // 当前合集筛选下的成员 id（filter.kind==="collection" 时由 matchesFilter 用）
   const [collectionMembers, setCollectionMembers] = useState<Set<number>>(new Set());
@@ -899,6 +901,28 @@ function App() {
     : sorted;
   const selected = assets.find((a) => a.id === selectedId) ?? null;
 
+  // 悬浮参考浮窗：把一张图"拉到桌面"——独立的无边框/透明/置顶小窗，浮在绘图软件上方
+  function openRefWindow(a: Asset) {
+    const ratio = a.width && a.height ? a.height / a.width : 0.72;
+    const w = 360;
+    const h = Math.round(Math.min(900, Math.max(180, w * ratio))) + 30; // +顶栏高
+    const params = new URLSearchParams({ p: a.path, n: a.name });
+    const label = `ref-${a.id}-${refSeq.current++}`;
+    const win = new WebviewWindow(label, {
+      url: `index.html#ref?${params.toString()}`,
+      width: w,
+      height: h,
+      decorations: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: true,
+      shadow: false,
+      title: a.name,
+    });
+    win.once("tauri://error", (e) => setStatus(`悬浮窗打开失败：${JSON.stringify(e.payload)}`));
+  }
+
   // 看图/练习浮层：多选时拿选中的当播放列表（练 gesture），否则用当前过滤列表
   function openViewer(id: number) {
     const playlist =
@@ -1116,6 +1140,15 @@ function App() {
               }}
             >
               看图 / 练习（取色·灰度·镜像·计时）
+            </div>
+            <div
+              className="ctx-item"
+              onClick={() => {
+                openRefWindow(ctx.asset);
+                setCtx(null);
+              }}
+            >
+              悬浮到桌面（置顶参考）
             </div>
             <div className="ctx-sep" />
             <div
