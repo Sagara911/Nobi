@@ -23,7 +23,7 @@ export default function ModelViewer({
   const [rotate, setRotate] = useState(true);
   const [solid, setSolid] = useState(false);
   const [glInfo, setGlInfo] = useState(""); // 实际在跑的 GPU/渲染器，黑屏排查用
-  const [compat, setCompat] = useState(false); // 兼容显示：用 <img> 元素逐帧贴图（显示层终极兜底）
+  const [compat, setCompat] = useState(true); // 稳定显示：用 <img> 元素逐帧贴图，和封面截图同一路径
   const compatApiRef = useRef<((on: boolean) => void) | null>(null);
   const ctlRef = useRef<{
     reset?: () => void;
@@ -36,7 +36,7 @@ export default function ModelViewer({
     let disposed = false;
     let cleanup = () => {};
     setSolid(false);
-    setCompat(false);
+    setCompat(true);
     (async () => {
       try {
         const THREE = await import("three");
@@ -71,11 +71,13 @@ export default function ModelViewer({
         const octx = out.getContext("2d", { willReadFrequently: true });
         if (!octx) throw new Error("2D 画布创建失败");
         // 兼容显示通道：<img> 逐帧贴 toDataURL——图片元素的显示绝无失败可能（封面同路）
-        let slowMode = false;
+        let slowMode = true;
         let zeroFrames = 0;
         let lastSlow = 0;
         const imgOut = document.createElement("img");
-        imgOut.style.cssText = "width:100%;height:100%;object-fit:contain;display:none";
+        imgOut.draggable = false;
+        imgOut.style.cssText =
+          "width:100%;height:100%;object-fit:contain;display:block;user-select:none";
         el.appendChild(imgOut);
         const setCompatMode = (on: boolean) => {
           out.style.display = on ? "none" : "block";
@@ -84,6 +86,7 @@ export default function ModelViewer({
           setCompat(on);
         };
         compatApiRef.current = setCompatMode;
+        setCompatMode(true);
 
         // 该机型连 drawImage(GL画布) 都走坏掉的 GPU 纹理通道（拷出透明）。
         // 唯一实证可用的是"逐像素读回"（封面 toDataURL 一直正常），所以每帧
@@ -106,7 +109,7 @@ export default function ModelViewer({
         const blit = (now: number) => {
           if (!imgData || !fw || !fh) return;
           if (slowMode) {
-            if (now - lastSlow < 120) return; // ~8fps，PNG 编码代价高，看模型够用
+            if (now - lastSlow < 90) return; // ~11fps，PNG 编码代价高，看模型够用
             lastSlow = now;
             imgOut.src = renderer.domElement.toDataURL("image/png");
             return;
@@ -161,7 +164,7 @@ export default function ModelViewer({
         scene.add(camera);
 
         // 事件绑可见的 2D 画布（WebGL 画布已离屏收不到鼠标）
-        const controls = new OrbitControls(camera, out);
+        const controls = new OrbitControls(camera, el);
         controls.enableDamping = true;
         controls.autoRotate = true;
         controls.autoRotateSpeed = 2.2;
@@ -397,7 +400,7 @@ export default function ModelViewer({
             <button
               className={"mv-tool" + (compat ? " on" : "")}
               onClick={() => compatApiRef.current?.(!compat)}
-              title="兼容显示：画面黑屏时切开——改用图片元素逐帧显示（慢些但保证可见）"
+              title="兼容显示：使用和封面生成一致的截图流显示；关闭后切到性能模式"
             >
               🛟 兼容
             </button>
