@@ -22,6 +22,8 @@ export default function ModelViewer({
   const [status, setStatus] = useState("加载 3D 引擎…");
   const [rotate, setRotate] = useState(true);
   const [glInfo, setGlInfo] = useState(""); // 实际在跑的 GPU/渲染器，黑屏排查用
+  const [compat, setCompat] = useState(false); // 兼容显示：用 <img> 元素逐帧贴图（显示层终极兜底）
+  const compatApiRef = useRef<((on: boolean) => void) | null>(null);
   const ctlRef = useRef<{
     reset?: () => void;
     setRotate?: (v: boolean) => void;
@@ -60,8 +62,24 @@ export default function ModelViewer({
         out.style.width = "100%";
         out.style.height = "100%";
         el.appendChild(out);
-        const octx = out.getContext("2d");
+        // willReadFrequently：强制 CPU 软件画布——该机型 GPU 画布层在置顶浮层里
+        // 合成不出来（画板在普通面板里所以没事），CPU 画布与图片/文字同一条上屏路
+        const octx = out.getContext("2d", { willReadFrequently: true });
         if (!octx) throw new Error("2D 画布创建失败");
+        // 兼容显示通道：<img> 逐帧贴 toDataURL——图片元素的显示绝无失败可能（封面同路）
+        let slowMode = false;
+        let zeroFrames = 0;
+        let lastSlow = 0;
+        const imgOut = document.createElement("img");
+        imgOut.style.cssText = "width:100%;height:100%;object-fit:contain;display:none";
+        el.appendChild(imgOut);
+        const setCompatMode = (on: boolean) => {
+          out.style.display = on ? "none" : "block";
+          imgOut.style.display = on ? "block" : "none";
+          slowMode = on;
+          setCompat(on);
+        };
+        compatApiRef.current = setCompatMode;
 
         // 该机型连 drawImage(GL画布) 都走坏掉的 GPU 纹理通道（拷出透明）。
         // 唯一实证可用的是"逐像素读回"（封面 toDataURL 一直正常），所以每帧
@@ -80,29 +98,20 @@ export default function ModelViewer({
           imgData = new ImageData(fw, fh);
         };
         realloc();
-        // 兜底机制：readPixels 若连续读回全零（个别驱动怪癖），自动切换到
-        // toDataURL→drawImage 慢速通道（生成封面用的就是它，实证 100% 可显示）
-        let zeroFrames = 0;
-        let slowMode = false;
-        let lastSlow = 0;
-        const slowImg = new Image();
-        slowImg.onload = () => {
-          octx.clearRect(0, 0, out.width, out.height);
-          octx.drawImage(slowImg, 0, 0);
-        };
+        // 兜底机制：readPixels 若连续读回全零（个别驱动怪癖），自动切到兼容显示
         const blit = (now: number) => {
           if (!imgData || !fw || !fh) return;
           if (slowMode) {
-            if (now - lastSlow < 100) return; // ~10fps，PNG 编码代价高
+            if (now - lastSlow < 120) return; // ~8fps，PNG 编码代价高，看模型够用
             lastSlow = now;
-            slowImg.src = renderer.domElement.toDataURL("image/png");
+            imgOut.src = renderer.domElement.toDataURL("image/png");
             return;
           }
           glc.readPixels(0, 0, fw, fh, glc.RGBA, glc.UNSIGNED_BYTE, readBuf);
           // 自检：背景色 #141417 决定了正常帧中心像素必非零；连续全零=读回坏了
           const c = ((fh >> 1) * fw + (fw >> 1)) * 4;
           if (readBuf[c] + readBuf[c + 1] + readBuf[c + 2] === 0) {
-            if (++zeroFrames > 12) slowMode = true;
+            if (++zeroFrames > 12) setCompatMode(true);
             return;
           }
           zeroFrames = 0;
@@ -271,6 +280,7 @@ export default function ModelViewer({
           renderer.dispose();
           renderer.forceContextLoss();
           out.remove();
+          imgOut.remove();
         };
       } catch (e) {
         if (!disposed) setStatus(`加载失败：${e instanceof Error ? e.message : e}`);
@@ -325,6 +335,13 @@ export default function ModelViewer({
               title="把当前角度存为网格缩略图"
             >
               📷 设为封面
+            </button>
+            <button
+              className={"mv-tool" + (compat ? " on" : "")}
+              onClick={() => compatApiRef.current?.(!compat)}
+              title="兼容显示：画面黑屏时切开——改用图片元素逐帧显示（慢些但保证可见）"
+            >
+              🛟 兼容
             </button>
           </div>
           <div className="mv-title" title={asset.name}>
