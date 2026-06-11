@@ -125,13 +125,16 @@ type Session =
   | {
       mode: "erase";
       cp: { shapes: BoardShape[]; selection: string[] };
-      removed: boolean;
+      pending: Set<string>; // 擦中待删的形状（先半透明预览，松手才真删）
       last: P;
     }
   | { mode: "text" }
   | { mode: "create"; kind: "rect" | "ellipse" | "arrow"; start: P; cur: P; shift: boolean };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** 橡皮擦经过时的预览透明度（标记待删，松手才真删） */
+const ERASE_PREVIEW_OPACITY = 0.25;
 
 function hexAlpha(hex: string, a: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -960,11 +963,11 @@ export default function BoardCanvas({
       const layer = contentRef.current;
       const sess = sessionRef.current;
       if (!layer || !sess || sess.mode !== "erase") return;
-      // 沿上次采样点到当前点逐段采样，快速划动不漏删
+      // 沿上次采样点到当前点逐段采样，快速划动不漏标
       const from = sess.last;
       const dist = Math.hypot(stagePos.x - from.x, stagePos.y - from.y);
       const steps = Math.max(1, Math.ceil(dist / 4));
-      const dead: string[] = [];
+      let dirty = false;
       for (let i = 1; i <= steps; i++) {
         const p = {
           x: from.x + ((stagePos.x - from.x) * i) / steps,
@@ -972,19 +975,17 @@ export default function BoardCanvas({
         };
         const hit = layer.getIntersection(p);
         const id = hit ? shapeIdAt(hit) : null;
-        if (id && id !== "ui") dead.push(id);
+        // 擦到就标记并把节点置半透明（预览），不动模型、不入历史；松手才真删
+        if (id && id !== "ui" && !sess.pending.has(id)) {
+          sess.pending.add(id);
+          layer.findOne("#" + id)?.opacity(ERASE_PREVIEW_OPACITY);
+          dirty = true;
+        }
       }
       sess.last = stagePos;
-      if (dead.length) {
-        sess.removed = true;
-        store.applyLive(() => {
-          store.shapes = store.shapes.filter((s) => !dead.includes(s.id));
-          store.selection = store.selection.filter((id) => !dead.includes(id));
-        });
-        layer.draw(); // 立即同步重绘场景+命中画布，连续擦除不滞后
-      }
+      if (dirty) layer.draw(); // 仅重绘，连续擦除不滞后；不触发 React 重渲故预览透明度保持
     },
-    [shapeIdAt, store]
+    [shapeIdAt]
   );
 
   const onStagePointerDown = useCallback(
@@ -1069,7 +1070,7 @@ export default function BoardCanvas({
         return;
       }
       if (t === "eraser") {
-        sessionRef.current = { mode: "erase", cp: store.checkpoint(), removed: false, last: pos };
+        sessionRef.current = { mode: "erase", cp: store.checkpoint(), pending: new Set(), last: pos };
         eraseAt(pos);
         bumpSession();
         return;
@@ -1250,7 +1251,8 @@ export default function BoardCanvas({
           break;
         }
         case "erase":
-          if (sess.removed) store.commit(sess.cp); // 已实时删除，这里只落一条撤销记录
+          // 松手才真删（拖动中只是半透明预览）；deleteShapes 自带一条撤销记录并清理箭头绑定
+          if (sess.pending.size) store.deleteShapes([...sess.pending]);
           break;
         case "create": {
           const st = styleRef.current;
