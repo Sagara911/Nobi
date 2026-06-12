@@ -123,6 +123,16 @@ body {
   border-radius: var(--r); padding: 5px; box-shadow: var(--shadow-pop);
 }
 
+/* 二级飞出（PS 式）：挂在 .ctx-item.has-sub 右侧 */
+.ctx-item.has-sub { position: relative; display: flex; align-items: center; }
+.ctx-item.has-sub .sub-arrow { margin-left: auto; padding-left: 14px; color: var(--text-2); font-size: 10px; }
+.menu-flyout {
+  top: -5px; left: calc(100% + 2px); z-index: 71;
+  min-width: 180px;
+}
+.menu-flyout .ctx-item { display: flex; align-items: center; gap: 2px; }
+.menu-flyout .check { width: 16px; color: var(--accent, #5a86f0); font-size: 11px; }
+
 .search {
   flex: 1;
   max-width: 520px;
@@ -542,6 +552,56 @@ video.preview { aspect-ratio: auto; max-height: 300px; }
   position: fixed; inset: 0; background: rgba(6, 6, 8, 0.65); z-index: 60;
   display: flex; align-items: center; justify-content: center;
 }
+
+/* 看球弹窗：Google 式药丸搜索栏 + 键位表 */
+.webtv-pill {
+  display: flex; align-items: center; gap: 10px;
+  height: 46px; padding: 0 8px 0 16px; margin: 4px 0 2px;
+  background: var(--surface-3); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.webtv-pill:focus-within {
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+}
+.webtv-pill-icon { display: flex; color: var(--text-2); flex: none; }
+.webtv-pill input {
+  flex: 1; min-width: 0; height: 100%;
+  background: transparent !important; border: none !important; outline: none !important;
+  box-shadow: none !important; padding: 0 !important;
+  font-size: 14px; color: var(--text-1);
+}
+.webtv-pill input::placeholder { color: var(--text-2); }
+.webtv-pill-engine {
+  flex: none; height: 32px; padding: 0 28px 0 14px;
+  appearance: none; -webkit-appearance: none;
+  background-color: var(--surface-2); color: var(--text-1);
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px;
+  font-size: 12.5px; cursor: pointer; outline: none;
+  /* 自绘下拉箭头：原生箭头会撑破胶囊 */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23a0a4ae' stroke-width='1.6' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+}
+.webtv-pill-engine:hover { background-color: var(--surface-1, #1a1a20); }
+
+.webtv-keys {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px;
+  margin: 12px 0 2px;
+}
+.webtv-key {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-2); line-height: 1.6; white-space: nowrap;
+}
+.webtv-key kbd {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 58px; padding: 3px 10px; box-sizing: border-box;
+  background: var(--surface-3); border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  font-family: Consolas, monospace; font-size: 11px; line-height: 1.4;
+  color: var(--text-1); white-space: nowrap;
+}
+.webtv-note { opacity: 0.75; }
 .modal {
   background: var(--surface); border-radius: 12px;
   padding: 24px 26px; width: 480px; max-width: 90vw; max-height: 88vh; overflow-y: auto;

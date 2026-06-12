@@ -7,6 +7,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AiCfg, AiCmd, AiStatus, Asset, ClipTarget, Collection } from "./types";
 
+// ---- 看球直开窗 ----
+export const webOpenDirect = (url: string) => invoke<void>("web_open_direct", { url });
+export const setWebSearchEngine = (engine: string) =>
+  invoke<void>("web_set_search_engine", { engine });
+
 // ---- 素材库 ----
 export const listAssets = () => invoke<Asset[]>("list_assets");
 export const importFolder = (path: string) => invoke<number>("import_folder", { path });

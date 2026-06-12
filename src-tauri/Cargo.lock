@@ -2698,6 +2698,8 @@ dependencies = [
  "tiny_http",
  "tokio",
  "walkdir",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]

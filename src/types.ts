@@ -66,6 +66,10 @@ export interface MenuItem {
   label?: string;
   action?: () => void;
   sep?: boolean;
+  /** 二级菜单（PS 式悬停飞出）；与 action 互斥 */
+  sub?: MenuItem[];
+  /** 单选勾选态（如搜索引擎选择） */
+  checked?: boolean;
 }
 
 export interface Menu {
