@@ -47,9 +47,19 @@ fn toggle_web_windows(app: &tauri::AppHandle) {
     if wins.is_empty() {
         return;
     }
+    // 藏时暂停在播的视频、显时续播——只恢复「我们暂停的」(标了 data-nobiPaused)，
+    // 用户自己手动暂停的不动。视频藏在跨域 iframe 里时够不着（浏览器安全模型）。
+    const PAUSE_JS: &str = "document.querySelectorAll('video').forEach(function(v){if(!v.paused){v.dataset.nobiPaused='1';v.pause();}});";
+    const PLAY_JS: &str = "document.querySelectorAll('video').forEach(function(v){if(v.dataset.nobiPaused){delete v.dataset.nobiPaused;var p=v.play();if(p&&p.catch)p.catch(function(){});}});";
     let any_visible = wins.iter().any(|w| w.is_visible().unwrap_or(false));
-    for w in wins {
-        let _ = if any_visible { w.hide() } else { w.show() };
+    for w in &wins {
+        if any_visible {
+            let _ = w.eval(PAUSE_JS); // 先暂停再藏
+            let _ = w.hide();
+        } else {
+            let _ = w.show();
+            let _ = w.eval(PLAY_JS); // 显出来再续播
+        }
     }
     #[cfg(windows)]
     {
@@ -103,44 +113,95 @@ static WEB_THROUGH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 #[cfg(desktop)]
 static WEB_CTRLS_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// 看球快捷键的「动作 → 默认加速键」。用户可在看球弹窗里改每一个（解决与其它软件冲突），
+/// 改值存进 prefs 的 "keys"。加速键格式 = 修饰符 + W3C code（"Alt+Digit1" "Alt+KeyQ"
+/// "Alt+Backquote"），与前端抓键（e.code 拼修饰符）和 Shortcut::from_str 三方一致。
+/// 顺序即弹窗里的展示顺序；boss 是老板键（藏起后仍占用，其余归还）。
 #[cfg(desktop)]
-fn boss_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
-    use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
-    Shortcut::new(Some(Modifiers::ALT), Code::Backquote)
-}
+const KEY_ACTIONS: [(&str, &str); 13] = [
+    ("opacityDown", "Alt+Digit1"),
+    ("opacityUp", "Alt+Digit2"),
+    ("titlebar", "Alt+Digit3"),
+    ("through", "Alt+Digit4"),
+    ("zoomOut", "Alt+KeyQ"),
+    ("zoomIn", "Alt+KeyW"),
+    ("nav", "Alt+KeyE"),
+    ("back", "Alt+KeyZ"),
+    ("forward", "Alt+KeyX"),
+    ("mute", "Alt+KeyR"),
+    ("shot", "Alt+KeyS"),
+    ("dock", "Alt+KeyD"),
+    ("boss", "Alt+Backquote"),
+];
+
+/// 当前生效的 (动作, 加速键字符串, 解析后的 Shortcut)。启动时 rebuild_web_keys 填充。
+#[cfg(desktop)]
+static WEB_KEYS: std::sync::Mutex<Vec<(String, String, tauri_plugin_global_shortcut::Shortcut)>> =
+    std::sync::Mutex::new(Vec::new());
 
 #[cfg(desktop)]
-fn ctrl_shortcuts() -> [tauri_plugin_global_shortcut::Shortcut; 12] {
-    use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
-    [
-        Shortcut::new(Some(Modifiers::ALT), Code::Digit1),
-        Shortcut::new(Some(Modifiers::ALT), Code::Digit2),
-        Shortcut::new(Some(Modifiers::ALT), Code::Digit3),
-        Shortcut::new(Some(Modifiers::ALT), Code::Digit4),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyQ),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyW),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyE),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyR),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyS),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyD),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyZ),
-        Shortcut::new(Some(Modifiers::ALT), Code::KeyX),
-    ]
+fn default_accel(action: &str) -> &'static str {
+    KEY_ACTIONS
+        .iter()
+        .find(|(a, _)| *a == action)
+        .map(|(_, d)| *d)
+        .unwrap_or("")
 }
 
-/// 占用/归还看球快捷键。boss=老板键 Alt+`；ctrls=六个控制键（1/2/3/4/Q/W）。
+/// 按 默认 + 用户覆盖(overrides) 重建 WEB_KEYS。坏的覆盖（解析失败）退回默认，绝不留空。
+#[cfg(desktop)]
+fn rebuild_web_keys(overrides: &serde_json::Map<String, serde_json::Value>) {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+    let mut v = Vec::with_capacity(KEY_ACTIONS.len());
+    for (action, def) in KEY_ACTIONS {
+        let accel = overrides
+            .get(action)
+            .and_then(|x| x.as_str())
+            .filter(|s| Shortcut::from_str(s).is_ok())
+            .unwrap_or(def)
+            .to_string();
+        if let Ok(sc) = Shortcut::from_str(&accel) {
+            v.push((action.to_string(), accel, sc));
+        }
+    }
+    if let Ok(mut slot) = WEB_KEYS.lock() {
+        *slot = v;
+    }
+}
+
+/// 当前相对默认的覆盖项（accel ≠ 默认者），用于存盘与改键时合并。
+#[cfg(desktop)]
+fn current_key_overrides() -> serde_json::Map<String, serde_json::Value> {
+    let mut m = serde_json::Map::new();
+    if let Ok(keys) = WEB_KEYS.lock() {
+        for (action, accel, _) in keys.iter() {
+            if default_accel(action) != accel {
+                m.insert(action.clone(), serde_json::Value::String(accel.clone()));
+            }
+        }
+    }
+    m
+}
+
+/// 占用/归还看球快捷键。boss=老板键（藏起仍占）；ctrls=其余控制键（随可见窗占/还）。
 /// 重复注册/注销都吞错（幂等）；注册失败（键被他程序占）也不致命。
 ///
 /// ⚠️ 不要在快捷键回调/窗口事件回调里直接调（它们跑在主线程，而注册/注销内部要等
-/// 主线程处理→自锁卡死整个 app）——回调里一律用 set_web_hotkeys_async。
+/// 主线程处理→自锁卡死整个 app）——那些地方一律用 set_web_hotkeys_async。
 #[cfg(desktop)]
 fn set_web_hotkeys(app: &tauri::AppHandle, boss: bool, ctrls: bool) {
-    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    // 先快照再注册：register 要等主线程，而主线程的快捷键 handler 也要锁 WEB_KEYS——
+    // 握着锁去 register 会死锁。snapshot 后立即放锁。
+    let snapshot: Vec<(bool, Shortcut)> = match WEB_KEYS.lock() {
+        Ok(keys) => keys.iter().map(|(a, _, sc)| (a == "boss", *sc)).collect(),
+        Err(_) => return,
+    };
     let gs = app.global_shortcut();
-    let b = boss_shortcut();
-    let _ = if boss { gs.register(b) } else { gs.unregister(b) };
-    for s in ctrl_shortcuts() {
-        let _ = if ctrls { gs.register(s) } else { gs.unregister(s) };
+    for (is_boss, sc) in snapshot {
+        let want = if is_boss { boss } else { ctrls };
+        let _ = if want { gs.register(sc) } else { gs.unregister(sc) };
     }
 }
 
@@ -218,6 +279,7 @@ fn save_web_prefs(app: &tauri::AppHandle) {
         "zoom": WEB_ZOOM.load(Ordering::Relaxed),
         "zoom_manual": WEB_ZOOM_MANUAL.load(Ordering::Relaxed),
         "engine": engine,
+        "keys": serde_json::Value::Object(current_key_overrides()), // 只存改过的键
     });
     if let Some(p) = web_prefs_path(app) {
         if let Some(dir) = p.parent() {
@@ -231,25 +293,97 @@ fn save_web_prefs(app: &tauri::AppHandle) {
 #[cfg(desktop)]
 fn load_web_prefs(app: &tauri::AppHandle) {
     use std::sync::atomic::Ordering;
-    let Some(p) = web_prefs_path(app) else { return };
-    let Ok(s) = std::fs::read_to_string(p) else { return };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) else {
-        return;
-    };
-    if let Some(op) = v.get("opacity").and_then(|x| x.as_u64()) {
-        WEB_OPACITY.store((op as u8).max(51), Ordering::Relaxed);
-    }
-    if let Some(z) = v.get("zoom").and_then(|x| x.as_u64()) {
-        WEB_ZOOM.store((z as u32).clamp(40, 200), Ordering::Relaxed);
-    }
-    if let Some(m) = v.get("zoom_manual").and_then(|x| x.as_bool()) {
-        WEB_ZOOM_MANUAL.store(m, Ordering::Relaxed);
-    }
-    if let Some(e) = v.get("engine").and_then(|x| x.as_str()) {
-        if let Ok(mut slot) = WEB_ENGINE.lock() {
-            *slot = e.to_string();
+    // 无论有没有 prefs 文件，最后都要 rebuild_web_keys（否则 WEB_KEYS 为空、一个键都注册不上）
+    let mut key_overrides = serde_json::Map::new();
+    if let Some(p) = web_prefs_path(app) {
+        if let Ok(s) = std::fs::read_to_string(p) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+                if let Some(op) = v.get("opacity").and_then(|x| x.as_u64()) {
+                    WEB_OPACITY.store((op as u8).max(51), Ordering::Relaxed);
+                }
+                if let Some(z) = v.get("zoom").and_then(|x| x.as_u64()) {
+                    WEB_ZOOM.store((z as u32).clamp(40, 200), Ordering::Relaxed);
+                }
+                if let Some(m) = v.get("zoom_manual").and_then(|x| x.as_bool()) {
+                    WEB_ZOOM_MANUAL.store(m, Ordering::Relaxed);
+                }
+                if let Some(e) = v.get("engine").and_then(|x| x.as_str()) {
+                    if let Ok(mut slot) = WEB_ENGINE.lock() {
+                        *slot = e.to_string();
+                    }
+                }
+                if let Some(k) = v.get("keys").and_then(|x| x.as_object()) {
+                    key_overrides = k.clone();
+                }
+            }
         }
     }
+    rebuild_web_keys(&key_overrides);
+}
+
+/// 看球快捷键命令：取当前绑定（动作, 加速键）给弹窗展示。
+#[cfg(desktop)]
+#[tauri::command]
+fn web_get_keys() -> Vec<(String, String)> {
+    WEB_KEYS
+        .lock()
+        .map(|k| k.iter().map(|(a, ac, _)| (a.clone(), ac.clone())).collect())
+        .unwrap_or_default()
+}
+
+/// 改一个动作的快捷键。校验可解析 + 不与其它看球动作撞；先注销旧键、重建、按当前窗状态重注册。
+/// 命令跑在 worker 线程（非主线程），这里直接 register 不会自锁。
+#[cfg(desktop)]
+#[tauri::command]
+fn web_set_key(app: tauri::AppHandle, action: String, accel: String) -> Result<(), String> {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+    if default_accel(&action).is_empty() {
+        return Err("未知动作".into());
+    }
+    let sc = Shortcut::from_str(&accel).map_err(|_| "无法识别的快捷键".to_string())?;
+    // 与其它看球动作冲突？
+    if let Ok(keys) = WEB_KEYS.lock() {
+        if keys.iter().any(|(a, _, s)| *a != action && *s == sc) {
+            return Err("和看球里另一个快捷键重复了".into());
+        }
+    }
+    set_web_hotkeys(&app, false, false); // 先把当前全注销（用旧绑定）
+    let mut ov = current_key_overrides();
+    if accel == default_accel(&action) {
+        ov.remove(&action);
+    } else {
+        ov.insert(action, serde_json::Value::String(accel));
+    }
+    rebuild_web_keys(&ov);
+    save_web_prefs(&app);
+    // 按当前窗状态重注册：有任意 web 窗→boss 占；有可见 web 窗→其余也占
+    let wins: Vec<_> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(l, _)| l.starts_with("web-"))
+        .collect();
+    let any = !wins.is_empty();
+    let visible = wins.iter().any(|(_, w)| w.is_visible().unwrap_or(false));
+    set_web_hotkeys(&app, any, visible);
+    Ok(())
+}
+
+/// 把看球快捷键全部恢复默认。
+#[cfg(desktop)]
+#[tauri::command]
+fn web_reset_keys(app: tauri::AppHandle) {
+    set_web_hotkeys(&app, false, false);
+    rebuild_web_keys(&serde_json::Map::new());
+    save_web_prefs(&app);
+    let wins: Vec<_> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(l, _)| l.starts_with("web-"))
+        .collect();
+    let any = !wins.is_empty();
+    let visible = wins.iter().any(|(_, w)| w.is_visible().unwrap_or(false));
+    set_web_hotkeys(&app, any, visible);
 }
 
 /// 直开窗页面缩放 ×100（存最近一次实际应用值，自动/手动共用）。小窗看球时站点控件是按
@@ -572,50 +706,34 @@ pub fn run() {
             #[cfg(desktop)]
             load_web_prefs(app.handle());
 
-            // 看球小窗全局快捷键（Rust 侧注册——不经 IPC，故无需 capabilities 授权）：
-            //   Alt+`  老板键：切所有 web-* 窗显隐
-            //   Alt+1  直开窗变淡（更透）   Alt+2  直开窗变浓（更实）
-            //   Alt+3  召出/收回直开窗标题栏（无边框时临时切回好移动/缩放/关闭）
-            //   Alt+4  直开窗点击穿透 开/关（调淡后鼠标穿过去点下面的画画软件）
-            //   Alt+Q  页面缩小 / Alt+W 页面放大（默认随窗宽自动缩；一按这俩即切手动接管）
-            //   Alt+E  换台：弹原生输入框，输网址直跳、输搜索词走 Bing（浏览器地址栏逻辑）
-            //   Alt+R  快速静音切换（画面留着声音掐掉）  Alt+S  截当前画面进素材库
-            //   Alt+D  贴角循环（右下→右上→左上→左下）
-            //   Alt+Z  网页后退 / Alt+X 网页前进（无边框没浏览器后退键，进了详情页靠这俩退）
-            //   （注：Alt+W 会抢中文版 PS 的「窗口(W)」菜单热键、Alt+Q 抢 Office 搜索——实用影响小，
-            //     且键只在看球窗可见时占用，藏起/全关即归还，冲突自然解）
+            // 看球小窗全局快捷键。动作→键的映射是可配置的（KEY_ACTIONS 默认值 + 用户在弹窗里改，
+            // 存 prefs；启动时 load_web_prefs→rebuild_web_keys 填 WEB_KEYS）。这里只按「按下的键
+            // 属于哪个动作」分发；注册/注销见 set_web_hotkeys（只在看球窗可见时占用、藏起/全关归还）。
+            // 默认：1/2 透明度·Q/W 页面缩放（均可按住连调）·3 标题栏·4 穿透·E 换台搜索·
+            //       Z/X 网页后退前进·R 静音·S 截图入库·D 贴角·` 老板键。
             #[cfg(desktop)]
             {
                 use std::sync::atomic::Ordering;
-                use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
-                let boss = Shortcut::new(Some(Modifiers::ALT), Code::Backquote);
-                let dimmer = Shortcut::new(Some(Modifiers::ALT), Code::Digit1);
-                let brighter = Shortcut::new(Some(Modifiers::ALT), Code::Digit2);
-                let chrome = Shortcut::new(Some(Modifiers::ALT), Code::Digit3);
-                let through = Shortcut::new(Some(Modifiers::ALT), Code::Digit4);
-                let zoomout = Shortcut::new(Some(Modifiers::ALT), Code::KeyQ);
-                let zoomin = Shortcut::new(Some(Modifiers::ALT), Code::KeyW);
-                let navurl = Shortcut::new(Some(Modifiers::ALT), Code::KeyE);
-                let mute = Shortcut::new(Some(Modifiers::ALT), Code::KeyR);
-                let shot = Shortcut::new(Some(Modifiers::ALT), Code::KeyS);
-                let dock = Shortcut::new(Some(Modifiers::ALT), Code::KeyD);
-                let back = Shortcut::new(Some(Modifiers::ALT), Code::KeyZ);
-                let fwd = Shortcut::new(Some(Modifiers::ALT), Code::KeyX);
+                use tauri_plugin_global_shortcut::ShortcutState;
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, shortcut, event| {
-                            // 可连调键（透明度/缩放）：按下立即走一步并起重复线程（330ms 后
-                            // 每 110ms 一步，松开即停）；步进函数自带上下限，按到头自动不动。
-                            let repeat_id = if shortcut == &dimmer {
-                                1u8
-                            } else if shortcut == &brighter {
-                                2
-                            } else if shortcut == &zoomout {
-                                3
-                            } else if shortcut == &zoomin {
-                                4
-                            } else {
-                                0
+                            // 按下的键属于哪个看球动作？（动态查 WEB_KEYS）
+                            let action = WEB_KEYS.lock().ok().and_then(|keys| {
+                                keys.iter()
+                                    .find(|(_, _, sc)| sc == shortcut)
+                                    .map(|(a, _, _)| a.clone())
+                            });
+                            let Some(action) = action else { return };
+
+                            // 可连调键（透明度/缩放）：按下立即走一步 + 起重复线程（330ms 后每
+                            // 110ms 一步，松开即停）；步进函数自带上下限，按到头自动不动。
+                            let repeat_id = match action.as_str() {
+                                "opacityDown" => 1u8,
+                                "opacityUp" => 2,
+                                "zoomOut" => 3,
+                                "zoomIn" => 4,
+                                _ => 0,
                             };
                             if repeat_id != 0 {
                                 if event.state() == ShortcutState::Pressed {
@@ -626,7 +744,6 @@ pub fn run() {
                                     let app2 = app.clone();
                                     std::thread::spawn(move || {
                                         std::thread::sleep(std::time::Duration::from_millis(330));
-                                        // 上限 ~12s 兜底：万一平台丢了「松开」事件也不会永转
                                         for _ in 0..110 {
                                             if HOLD_KEY.load(Ordering::Relaxed) != repeat_id
                                                 || HOLD_GEN.load(Ordering::Relaxed) != my
@@ -650,47 +767,45 @@ pub fn run() {
                             if event.state() != ShortcutState::Pressed {
                                 return;
                             }
-                            if shortcut == &boss {
-                                toggle_web_windows(app);
-                            } else if shortcut == &chrome {
-                                let on = !WEB_DECOR.load(Ordering::Relaxed);
-                                WEB_DECOR.store(on, Ordering::Relaxed);
-                                for (label, w) in app.webview_windows() {
-                                    if label.starts_with("web-d") {
-                                        let _ = w.set_decorations(on);
+                            match action.as_str() {
+                                "boss" => toggle_web_windows(app),
+                                "titlebar" => {
+                                    let on = !WEB_DECOR.load(Ordering::Relaxed);
+                                    WEB_DECOR.store(on, Ordering::Relaxed);
+                                    for (label, w) in app.webview_windows() {
+                                        if label.starts_with("web-d") {
+                                            let _ = w.set_decorations(on);
+                                        }
                                     }
+                                    // set_decorations 异步重写窗样式、抹掉 layered alpha→立即+延迟补刀
+                                    #[cfg(windows)]
+                                    reapply_web_opacity_soon(app);
                                 }
-                                // set_decorations 会重写窗口样式、抹掉 layered alpha——
-                                // 且异步落地，立即重应用会被反超，延迟补刀（见 reapply 函数 doc）
-                                #[cfg(windows)]
-                                reapply_web_opacity_soon(app);
-                            } else if shortcut == &through {
-                                let on = !WEB_THROUGH.load(Ordering::Relaxed);
-                                WEB_THROUGH.store(on, Ordering::Relaxed);
-                                for (label, w) in app.webview_windows() {
-                                    if label.starts_with("web-d") {
-                                        let _ = w.set_ignore_cursor_events(on);
+                                "through" => {
+                                    let on = !WEB_THROUGH.load(Ordering::Relaxed);
+                                    WEB_THROUGH.store(on, Ordering::Relaxed);
+                                    for (label, w) in app.webview_windows() {
+                                        if label.starts_with("web-d") {
+                                            let _ = w.set_ignore_cursor_events(on);
+                                        }
                                     }
+                                    #[cfg(windows)]
+                                    reapply_web_opacity_soon(app);
                                 }
-                                // 切穿透会增删 WS_EX_LAYERED（Tauri 内部实现），把透明度抹掉——
-                                // 同样异步落地，立即+延迟双重应用
-                                #[cfg(windows)]
-                                reapply_web_opacity_soon(app);
-                            } else if shortcut == &navurl {
-                                // 换台：优先弹在有焦点的直开窗；都没焦点就全弹（通常只开一个窗）
-                                let wins: Vec<_> = app
-                                    .webview_windows()
-                                    .into_iter()
-                                    .filter(|(l, _)| l.starts_with("web-d"))
-                                    .map(|(_, w)| w)
-                                    .collect();
-                                let focused: Vec<_> = wins
-                                    .iter()
-                                    .filter(|w| w.is_focused().unwrap_or(false))
-                                    .collect();
-                                // 浏览器地址栏逻辑：像网址→直跳；不像（中文/空格/无点号）→当搜索词
-                                //（引擎从菜单「工具→看球搜索引擎」选，默认 Google）
-                                const NAV_JS_TPL: &str = r#"(function(){
+                                "nav" => {
+                                    // 换台：优先弹在有焦点的直开窗；都没焦点就全弹（通常只一个窗）
+                                    let wins: Vec<_> = app
+                                        .webview_windows()
+                                        .into_iter()
+                                        .filter(|(l, _)| l.starts_with("web-d"))
+                                        .map(|(_, w)| w)
+                                        .collect();
+                                    let focused: Vec<_> = wins
+                                        .iter()
+                                        .filter(|w| w.is_focused().unwrap_or(false))
+                                        .collect();
+                                    // 像网址→直跳；不像（中文/空格/无点号）→走所选引擎搜
+                                    const NAV_JS_TPL: &str = r#"(function(){
   var u = prompt('换台：输入网址或搜索词（回车）', '');
   if (!u) return;
   u = u.trim();
@@ -701,48 +816,50 @@ pub fn run() {
     ? (hasProto ? u : 'https://' + u)
     : '__ENGINE__' + encodeURIComponent(u);
 })();"#;
-                                let nav_js = NAV_JS_TPL.replace("__ENGINE__", web_engine_prefix());
-                                if focused.is_empty() {
-                                    for w in &wins {
-                                        let _ = w.eval(&nav_js);
-                                    }
-                                } else {
-                                    for w in focused {
-                                        let _ = w.eval(&nav_js);
-                                    }
-                                }
-                            } else if shortcut == &mute {
-                                // 快速静音：画面留着、声音掐掉（人要说话/开会时）
-                                let m = !WEB_MUTED.load(Ordering::Relaxed);
-                                WEB_MUTED.store(m, Ordering::Relaxed);
-                                #[cfg(windows)]
-                                mute_web_windows(app, m);
-                            } else if shortcut == &shot {
-                                // 截当前画面进素材库
-                                #[cfg(windows)]
-                                capture_web_to_library(app);
-                            } else if shortcut == &dock {
-                                snap_web_corner(app);
-                            } else if shortcut == &back || shortcut == &fwd {
-                                // 网页后退/前进：注入 history.back()/forward()
-                                let js = if shortcut == &back {
-                                    "history.back()"
-                                } else {
-                                    "history.forward()"
-                                };
-                                for (label, w) in app.webview_windows() {
-                                    if label.starts_with("web-d")
-                                        && w.is_focused().unwrap_or(false)
-                                    {
-                                        let _ = w.eval(js);
+                                    let nav_js =
+                                        NAV_JS_TPL.replace("__ENGINE__", web_engine_prefix());
+                                    if focused.is_empty() {
+                                        for w in &wins {
+                                            let _ = w.eval(&nav_js);
+                                        }
+                                    } else {
+                                        for w in focused {
+                                            let _ = w.eval(&nav_js);
+                                        }
                                     }
                                 }
+                                "mute" => {
+                                    let m = !WEB_MUTED.load(Ordering::Relaxed);
+                                    WEB_MUTED.store(m, Ordering::Relaxed);
+                                    #[cfg(windows)]
+                                    mute_web_windows(app, m);
+                                }
+                                "shot" => {
+                                    #[cfg(windows)]
+                                    capture_web_to_library(app);
+                                }
+                                "dock" => snap_web_corner(app),
+                                "back" | "forward" => {
+                                    let js = if action == "back" {
+                                        "history.back()"
+                                    } else {
+                                        "history.forward()"
+                                    };
+                                    for (label, w) in app.webview_windows() {
+                                        if label.starts_with("web-d")
+                                            && w.is_focused().unwrap_or(false)
+                                        {
+                                            let _ = w.eval(js);
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         })
                         .build(),
                 )?;
-                // 注意：启动时不注册任何键——看球窗出现才占用、藏起/全关即归还
-                //（见 set_web_hotkeys 与 on_window_event 的生命周期管理），平时不抢系统快捷键。
+                // 启动时不注册任何键——看球窗出现才占用、藏起/全关即归还（见 set_web_hotkeys
+                // 与 on_window_event 的生命周期管理），平时不抢系统快捷键。
             }
 
             // 系统托盘：关窗收进托盘（后台采集/MCP 服务不中断），点图标还原
@@ -953,7 +1070,10 @@ pub fn run() {
             collect::export_mcp_script,
             // 看球直开窗（Rust 侧建窗，记住几何）
             web_open_direct,
-            web_set_search_engine
+            web_set_search_engine,
+            web_get_keys,
+            web_set_key,
+            web_reset_keys
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,17 +1,51 @@
-// 看球入口弹窗：输入网址或搜索词 → 直接开「直开」置顶小窗（Rust web_open_direct，记住几何）。
-// 引擎选择与菜单「工具→看球搜索引擎」同源（App 持有状态，双向同步）。
-import { useState } from "react";
+// 看球入口弹窗：输入网址或搜索词 → 开「直开」置顶小窗（Rust web_open_direct，记住几何）。
+// 引擎选择与菜单同源（App 持有，双向同步）。快捷键可逐个点改（与别的软件冲突时自定义）。
+import { useEffect, useState } from "react";
 import * as api from "../api";
 
 const LS_KEY = "nobi.webmirror.url";
 const RECENTS_KEY = "nobi.webmirror.recents";
 
-// 搜索引擎前缀（与 Rust 侧 Alt+E 一致）
 const ENGINE_PREFIX: Record<string, string> = {
   google: "https://www.google.com/search?q=",
   bing: "https://www.bing.com/search?q=",
   baidu: "https://www.baidu.com/s?wd=",
 };
+
+// 动作 → 中文说明（顺序由后端返回，这里只查名）
+const ACTION_LABEL: Record<string, string> = {
+  opacityDown: "变淡",
+  opacityUp: "变浓",
+  titlebar: "标题栏",
+  through: "点击穿透",
+  zoomOut: "页面缩小",
+  zoomIn: "页面放大",
+  nav: "换台 / 搜索",
+  back: "网页后退",
+  forward: "网页前进",
+  mute: "静音",
+  shot: "截图入库",
+  dock: "贴角",
+  boss: "老板键",
+};
+
+// 加速键字符串（Alt+Digit1 / Alt+KeyQ / Alt+Backquote）→ 人话（Alt + 1）
+function fmtAccel(a: string): string {
+  return a
+    .split("+")
+    .map((t) => {
+      if (t === "Control") return "Ctrl";
+      if (t === "Super") return "Win";
+      if (/^Digit\d$/.test(t)) return t.slice(5);
+      if (/^Key[A-Z]$/.test(t)) return t.slice(3);
+      if (t === "Backquote") return "`";
+      if (t === "Minus") return "-";
+      if (t === "Equal") return "=";
+      if (t === "Space") return "Space";
+      return t.replace(/^Arrow/, "");
+    })
+    .join(" + ");
+}
 
 function loadRecents(): string[] {
   try {
@@ -22,7 +56,6 @@ function loadRecents(): string[] {
   }
 }
 
-// 浏览器地址栏逻辑：像网址（带协议 / 无空格且带点号且无中文）→ 直跳；否则用所选引擎搜
 function normalizeUrl(s: string, engine: string): string {
   const t = s.trim();
   if (!t) return "";
@@ -31,19 +64,6 @@ function normalizeUrl(s: string, engine: string): string {
   if (likeUrl) return hasProto ? t : `https://${t}`;
   return `${ENGINE_PREFIX[engine] ?? ENGINE_PREFIX.google}${encodeURIComponent(t)}`;
 }
-
-const KEYS: [string, string][] = [
-  ["Alt+1/2", "透明度 淡 / 浓"],
-  ["Alt+Q/W", "页面 缩 / 放"],
-  ["Alt+3", "标题栏 召出 / 收回"],
-  ["Alt+4", "点击穿透 开 / 关"],
-  ["Alt+E", "换台 / 搜索"],
-  ["Alt+Z/X", "网页 后退 / 前进"],
-  ["Alt+R", "静音 开 / 关"],
-  ["Alt+S", "截图进素材库"],
-  ["Alt+D", "贴角（循环四角）"],
-  ["Alt+`", "老板键：藏+静音 / 恢复"],
-];
 
 export default function WebTVModal({
   onClose,
@@ -63,6 +83,42 @@ export default function WebTVModal({
   });
   const [recents] = useState<string[]>(loadRecents);
   const [err, setErr] = useState("");
+  const [keys, setKeys] = useState<[string, string][]>([]);
+  const [recording, setRecording] = useState<string | null>(null); // 正在录制哪个动作
+
+  const reloadKeys = () => api.webGetKeys().then(setKeys).catch(() => {});
+  useEffect(() => {
+    reloadKeys();
+  }, []);
+
+  // 录制：捕获下一个按键组合 → 存为该动作的快捷键
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        setRecording(null);
+        return;
+      }
+      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return; // 等真正的主键
+      const mods: string[] = [];
+      if (e.ctrlKey) mods.push("Control");
+      if (e.altKey) mods.push("Alt");
+      if (e.shiftKey) mods.push("Shift");
+      if (e.metaKey) mods.push("Super");
+      const accel = [...mods, e.code].join("+");
+      const action = recording;
+      setRecording(null);
+      setErr("");
+      api
+        .webSetKey(action, accel)
+        .then(reloadKeys)
+        .catch((x) => setErr(`${ACTION_LABEL[action] || action}：${x}`));
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recording]);
 
   const open = async () => {
     const u = normalizeUrl(input, engine);
@@ -80,6 +136,11 @@ export default function WebTVModal({
     } catch (e) {
       setErr(`打开失败：${e}`);
     }
+  };
+
+  const resetKeys = () => {
+    setErr("");
+    api.webResetKeys().then(reloadKeys).catch((x) => setErr(String(x)));
   };
 
   return (
@@ -126,19 +187,34 @@ export default function WebTVModal({
             {err}
           </p>
         )}
+
+        <div className="webtv-keys-head">
+          <span>快捷键（点右侧可改，跟别的软件冲突就换）</span>
+          <button className="webtv-reset" onClick={resetKeys}>
+            恢复默认
+          </button>
+        </div>
         <div className="webtv-keys">
-          {KEYS.map(([k, desc]) => (
-            <div key={k} className="webtv-key">
-              <kbd>{k}</kbd>
-              <span>{desc}</span>
+          {keys.map(([action, accel]) => (
+            <div key={action} className="webtv-key">
+              <span className="webtv-key-desc">{ACTION_LABEL[action] || action}</span>
+              <button
+                className={"webtv-key-bind" + (recording === action ? " recording" : "")}
+                onClick={() => setRecording(action)}
+                title="点击后按下新的快捷键；Esc 取消"
+              >
+                {recording === action ? "按新组合… (Esc 取消)" : fmtAccel(accel)}
+              </button>
             </div>
           ))}
         </div>
         <p className="modal-hint webtv-note">
-          Alt+1/2、Q/W 按住不松可连调；按键只在看球窗可见时占用，藏起 / 全关即归还系统。
+          变淡/变浓、页面缩放可按住连调；老板键藏起会顺带静音。快捷键只在看球窗可见时占用，
+          藏起 / 全关即归还系统（藏起后别的软件能照常用）。
         </p>
+
         <div className="modal-actions">
-          <button onClick={onClose}>取消</button>
+          <button className="btn" onClick={onClose}>取消</button>
           <button className="btn primary" onClick={() => void open()}>
             ↗ 直开
           </button>

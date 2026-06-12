@@ -11,6 +11,11 @@ import type { AiCfg, AiCmd, AiStatus, Asset, ClipTarget, Collection } from "./ty
 export const webOpenDirect = (url: string) => invoke<void>("web_open_direct", { url });
 export const setWebSearchEngine = (engine: string) =>
   invoke<void>("web_set_search_engine", { engine });
+// 看球快捷键自定义：取/改/恢复默认。get 返回 [动作, 加速键] 列表（保持展示顺序）
+export const webGetKeys = () => invoke<[string, string][]>("web_get_keys");
+export const webSetKey = (action: string, accel: string) =>
+  invoke<void>("web_set_key", { action, accel });
+export const webResetKeys = () => invoke<void>("web_reset_keys");
 
 // ---- 素材库 ----
 export const listAssets = () => invoke<Asset[]>("list_assets");
