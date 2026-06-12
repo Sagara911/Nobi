@@ -33,13 +33,18 @@
 
 之后每次发版：
 
+**第 0 步（必做）：在 `CHANGELOG.md` 最上面加本版条目**，格式 `## v0.1.X` + 几条简短 bullet。
+CI 会把这一段取出来当 Release 说明 + 应用内「发现新版本」弹窗里显示的更新内容（没写就只显示
+"Nobi v0.1.X"）。然后：
+
 ```bash
 node scripts/release.mjs 0.1.2
 ```
 
 脚本会改版本号、提交、打 v0.1.2 标签并推送；GitHub Actions
 （`.github/workflows/release.yml`）随即在云端编译、签名、生成 latest.json、
-创建 Release。约 10-15 分钟后用户自动收到更新。进度看仓库的 Actions 页。
+创建 Release（说明取自 CHANGELOG.md 对应 `## v0.1.2` 段）。约 10-15 分钟后用户自动收到更新。
+进度看仓库的 Actions 页。
 
 ## 手动发版（备用，Actions 不可用时）
 

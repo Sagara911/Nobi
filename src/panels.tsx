@@ -7,7 +7,7 @@ import { VirtuosoGrid } from "react-virtuoso";
 import type { IDockviewPanelProps } from "dockview";
 
 import type { AiCmd, Asset, Collection, Filter, SortKey } from "./types";
-import { COLOR_BUCKETS, isAudio, isModel, isVideo } from "./utils";
+import { isAudio, isModel, isVideo } from "./utils";
 import Inspector from "./components/Inspector";
 import TagTree from "./components/TagTree";
 import Section from "./components/Section";
@@ -20,6 +20,7 @@ export interface DockState {
   assets: Asset[];
   filter: Filter;
   setFilter: (f: Filter) => void;
+  toggleFilter: (f: Filter) => void; // 再点已激活的=取消回全部
   isActive: (f: Filter) => boolean;
   missingCount: number;
   findDups: () => void;
@@ -84,6 +85,8 @@ const useDock = () => useContext(DockCtx)!;
 function LibraryPanel(_p: IDockviewPanelProps) {
   const d = useDock();
   const [allFolders, setAllFolders] = useState(false);
+  // 标签默认只列有归类价值的(count≥2)；count=1 的 AI 长尾收进「全部标签」
+  const [allTags, setAllTags] = useState(false);
   // 文件夹移除的两次确认：第一次点 ✕ 变成 ❗，2.5s 内再点才执行
   const [pendingDel, setPendingDel] = useState<string | null>(null);
   useEffect(() => {
@@ -93,6 +96,8 @@ function LibraryPanel(_p: IDockviewPanelProps) {
   }, [pendingDel]);
   const folderList = allFolders ? d.folders : d.folders.slice(0, FOLDER_CAP);
   const hiddenFolders = d.folders.length - folderList.length;
+  const tagList = allTags ? d.tags : d.tags.filter(([, c]) => c >= 2);
+  const hiddenTags = d.tags.length - tagList.length;
 
   return (
     <aside className="sidebar">
@@ -116,15 +121,21 @@ function LibraryPanel(_p: IDockviewPanelProps) {
       </div>
 
       <Section k="side-smart" title="智能合集">
-        <div
-          className={"nav-item" + (d.isActive({ kind: "favorite" }) ? " active" : "")}
-          onClick={() => d.setFilter({ kind: "favorite" })}
-        >
-          <span>收藏</span>
-          <span className="count">{d.assets.filter((a) => a.favorite).length}</span>
-        </div>
-        <div className="nav-item" onClick={d.findDups} title="基于 CLIP 向量检测视觉近似的重复素材">
-          <span>重复项</span>
+        <div className="side-chips">
+          <button
+            className={"side-chip" + (d.isActive({ kind: "favorite" }) ? " active" : "")}
+            onClick={() => d.toggleFilter({ kind: "favorite" })}
+          >
+            ⭐ 收藏
+            <span className="count">{d.assets.filter((a) => a.favorite).length}</span>
+          </button>
+          <button
+            className="side-chip"
+            onClick={d.findDups}
+            title="基于 CLIP 向量检测视觉近似的重复素材"
+          >
+            ⧉ 重复项
+          </button>
         </div>
       </Section>
 
@@ -138,7 +149,11 @@ function LibraryPanel(_p: IDockviewPanelProps) {
                 (d.isActive({ kind: "collection", value: String(c.id) }) ? " active" : "")
               }
               title={c.name}
-              onClick={() => d.openCollection(c.id)}
+              onClick={() =>
+                d.isActive({ kind: "collection", value: String(c.id) })
+                  ? d.setFilter({ kind: "all" })
+                  : d.openCollection(c.id)
+              }
             >
               <span className="ellip">{c.name}</span>
               <span className="count">{c.count}</span>
@@ -167,7 +182,7 @@ function LibraryPanel(_p: IDockviewPanelProps) {
                 "nav-item" + (d.isActive({ kind: "folder", value: f.key }) ? " active" : "")
               }
               title={f.key}
-              onClick={() => d.setFilter({ kind: "folder", value: f.key })}
+              onClick={() => d.toggleFilter({ kind: "folder", value: f.key })}
             >
               <span className="ellip">{f.label}</span>
               <span className="count">{f.count}</span>
@@ -200,30 +215,25 @@ function LibraryPanel(_p: IDockviewPanelProps) {
         </Section>
       )}
 
-      <Section k="side-colors" title="配色">
-        <div className="color-grid">
-          {COLOR_BUCKETS.map((c) => (
-            <div
-              key={c.key}
-              className={
-                "color-chip" + (d.isActive({ kind: "color", value: c.key }) ? " active" : "")
-              }
-              title={`${c.name} · ${d.colorCounts.get(c.key) ?? 0}`}
-              onClick={() => d.setFilter({ kind: "color", value: c.key })}
-            >
-              <span className="dot" style={{ background: c.hex }} />
+      {d.tags.length > 0 && (
+        <Section k="side-tags" title={`标签 · ${d.tags.length}`} defaultOpen={false}>
+          <TagTree
+            tags={tagList}
+            activeValue={d.filter.kind === "tag" ? d.filter.value : null}
+            onPick={(v) => d.toggleFilter({ kind: "tag", value: v })}
+          />
+          {hiddenTags > 0 && (
+            <div className="nav-item more-row" onClick={() => setAllTags(true)}>
+              <span>全部标签（还有 {hiddenTags} 个）</span>
             </div>
-          ))}
-        </div>
-      </Section>
-
-      <Section k="side-tags" title={`标签 · ${d.tags.length}`}>
-        <TagTree
-          tags={d.tags}
-          activeValue={d.filter.kind === "tag" ? d.filter.value : null}
-          onPick={(v) => d.setFilter({ kind: "tag", value: v })}
-        />
-      </Section>
+          )}
+          {allTags && d.tags.some(([, c]) => c < 2) && (
+            <div className="nav-item more-row" onClick={() => setAllTags(false)}>
+              <span>收起冷门标签</span>
+            </div>
+          )}
+        </Section>
+      )}
     </aside>
   );
 }
@@ -335,6 +345,24 @@ function GridPanel(p: IDockviewPanelProps) {
         </span>
         <span className="grid-head-right">
           <span className="status-text">{d.status}</span>
+          <span className="type-chips">
+            {([
+              ["image", "图片"],
+              ["video", "视频"],
+              ["audio", "音频"],
+            ] as const).map(([val, label]) => {
+              const on = d.isActive({ kind: "type", value: val });
+              return (
+                <button
+                  key={val}
+                  className={"type-chip" + (on ? " on" : "")}
+                  onClick={() => d.toggleFilter({ kind: "type", value: val })}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </span>
           <select
             className="sort-select"
             title="图标大小（也可 Ctrl+滚轮缩放）"

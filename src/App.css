@@ -213,6 +213,20 @@ body {
 .nav-item.active { color: var(--accent); background: var(--accent-soft); }
 .nav-item .count { margin-left: auto; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 .nav-item.active .count { color: var(--accent); opacity: 0.7; }
+
+/* 智能合集：收紧成一行小 chip（收藏 / 重复项） */
+.side-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.side-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid transparent;
+  color: var(--text-2); font-size: 12.5px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.side-chip:hover { background: var(--surface-3); color: var(--text-1); }
+.side-chip.active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.side-chip .count { color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.side-chip.active .count { color: var(--accent); opacity: 0.7; }
 .nav-item.child { font-size: 12.5px; }
 .nav-item.dim { color: var(--text-3); cursor: default; font-size: 12px; }
 .nav-item.dim:hover { background: transparent; color: var(--text-3); }
@@ -284,6 +298,16 @@ body {
 }
 .sort-select:hover { color: var(--text-1); background: var(--surface-3); }
 .sort-select option { background: var(--surface-2); }
+
+/* 媒体类型快捷筛选（图片/视频/音频） */
+.type-chips { display: inline-flex; gap: 2px; background: var(--surface-2); border-radius: 7px; padding: 2px; }
+.type-chip {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-2); font-size: 12px; padding: 3px 10px; border-radius: 5px;
+  transition: background 0.12s, color 0.12s;
+}
+.type-chip:hover { color: var(--text-1); }
+.type-chip.on { background: var(--accent); color: #161005; font-weight: 600; }
 
 .grid {
   display: grid;

@@ -11,8 +11,9 @@ export const isVideo = (a: Asset) => VIDEO_FORMATS.has(a.format);
 const AUDIO_FORMATS = new Set(["MP3", "WAV", "OGG", "FLAC", "M4A", "AAC"]);
 export const isAudio = (a: Asset) => AUDIO_FORMATS.has(a.format);
 
-/** 3D model preview is rendered by ModelViewer with a compatibility path for WebView2. */
-export const ENABLE_3D = true;
+/** 3D 预览已下线：本机 WebView2 无法呈现实时 GPU 画布（详见 docs/3D 记录）。
+ *  保留 isModel 接口但恒假，所有 3D 分支即死代码、永不触发；要彻底重做再说。 */
+export const ENABLE_3D = false;
 
 const MODEL_FORMATS = new Set(["GLB", "GLTF", "OBJ", "FBX", "STL"]);
 export const isModel = (a: Asset) => ENABLE_3D && MODEL_FORMATS.has(a.format);

@@ -56,6 +56,27 @@ jobs:
             throw "TAURI_SIGNING_PRIVATE_KEY does not look like the Nobi updater private key."
           }
 
+      # 从 CHANGELOG.md 取当前 tag 的条目，作为 Release 说明 + 应用内更新弹窗的内容。
+      # tauri-action 会把 releaseBody 同时写进 GitHub Release 和 latest.json 的 notes。
+      - name: Build release notes from CHANGELOG
+        id: notes
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $body = @()
+          $in = $false
+          foreach ($l in (Get-Content CHANGELOG.md -Encoding utf8)) {
+            if ($l -match "^##\s+$([regex]::Escape($tag))\s*$") { $in = $true; continue }
+            elseif ($in -and $l -match "^##\s") { break }
+            elseif ($in) { $body += $l }
+          }
+          $text = ($body -join "`n").Trim()
+          if ([string]::IsNullOrWhiteSpace($text)) { $text = "Nobi $tag" }
+          $d = "NOTES_" + [guid]::NewGuid().ToString("N")
+          "notes<<$d" | Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8
+          $text       | Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8
+          "$d"        | Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,12 +85,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Nobi ${{ github.ref_name }}"
-          releaseBody: |
-            ### Install
-            Download `nobi_x.x.x_x64-setup.exe` and run it on Windows 10/11 x64.
-
-            Existing users will receive this update in the app.
-            `latest.json` is for the auto-updater and does not need to be downloaded manually.
+          releaseBody: ${{ steps.notes.outputs.notes }}
           releaseDraft: false
           prerelease: false
           args: --bundles nsis

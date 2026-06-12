@@ -21,7 +21,7 @@ import {
 import "dockview/dist/styles/dockview.css";
 
 import type { AiCmd, Asset, Collection, Filter, Menu, SortKey } from "./types";
-import { DOBBY_URL, REPO_URL, isAudio, isImage, isModel, primaryBucket } from "./utils";
+import { DOBBY_URL, REPO_URL, isAudio, isImage, isModel, isVideo, primaryBucket } from "./utils";
 import * as api from "./api";
 import { imageVector, textVector } from "./clip";
 import { addImages, type BoardEditor, type BoardImage } from "./Board";
@@ -32,7 +32,6 @@ import CmdManagerModal from "./components/CmdManagerModal";
 import WebTVModal from "./components/WebTVModal";
 import UpdateModal from "./components/UpdateModal";
 import ImageViewer from "./components/ImageViewer";
-import ModelViewer from "./components/ModelViewer";
 import { buildContactSheetPdf, bytesToB64 } from "./contactSheet";
 import "./App.css";
 
@@ -60,7 +59,6 @@ function App() {
   const [sortKey, setSortKey] = useState<SortKey>("time");
   const [ctx, setCtx] = useState<{ x: number; y: number; asset: Asset } | null>(null);
   const [viewer, setViewer] = useState<{ list: Asset[]; index: number } | null>(null);
-  const [modelViewer, setModelViewer] = useState<Asset | null>(null);
   const refSeq = useRef(0); // 悬浮参考浮窗的唯一 label 序号
   const ctxRef = useRef<HTMLDivElement | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -977,6 +975,12 @@ function App() {
         return a.missing;
       case "favorite":
         return a.favorite;
+      case "type":
+        return filter.value === "image"
+          ? isImage(a)
+          : filter.value === "video"
+            ? isVideo(a)
+            : isAudio(a);
     }
   };
   const matchesQuery = (a: Asset) =>
@@ -1019,14 +1023,10 @@ function App() {
   }
 
   // 看图/练习浮层：多选时拿选中的当播放列表（练 gesture），否则用当前过滤列表。
-  // 3D 模型路由到 ModelViewer；音频/视频没有静态画面，不进看图浮层。
+  // 音频/视频没有静态画面，不进看图浮层。
   function openViewer(id: number) {
     const a = assets.find((x) => x.id === id);
     if (!a) return;
-    if (isModel(a)) {
-      setModelViewer(a);
-      return;
-    }
     if (!isImage(a)) return;
     const base =
       sel.size > 1 && sel.has(id) ? displayList.filter((x) => sel.has(x.id)) : displayList;
@@ -1039,6 +1039,9 @@ function App() {
     f.kind === filter.kind &&
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (f.kind === "all" || (f as any).value === (filter as any).value);
+
+  // 再点一下已激活的筛选 = 取消、回到「全部素材」
+  const toggleFilter = (f: Filter) => setFilter(isActive(f) ? { kind: "all" } : f);
 
   const filterLabel =
     filter.kind === "all"
@@ -1053,6 +1056,8 @@ function App() {
       ? `文件夹：${lastSeg(filter.value)}`
       : filter.kind === "collection"
       ? `合集：${collections.find((c) => String(c.id) === filter.value)?.name ?? filter.value}`
+      : filter.kind === "type"
+      ? { image: "图片", video: "视频", audio: "音频" }[filter.value]
       : `配色：${filter.value}`;
 
   // ===== 菜单 =====
@@ -1119,6 +1124,7 @@ function App() {
     assets,
     filter,
     setFilter,
+    toggleFilter,
     isActive,
     missingCount,
     findDups,
@@ -1229,14 +1235,6 @@ function App() {
           assets={viewer.list}
           index={viewer.index}
           onClose={() => setViewer(null)}
-        />
-      )}
-
-      {modelViewer && (
-        <ModelViewer
-          asset={modelViewer}
-          onClose={() => setModelViewer(null)}
-          onThumbSaved={reload}
         />
       )}
 

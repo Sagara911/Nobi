@@ -26,7 +26,8 @@ export type Filter =
   | { kind: "color"; value: string }
   | { kind: "collection"; value: string } // value = 合集 id（字符串）
   | { kind: "missing" }
-  | { kind: "favorite" };
+  | { kind: "favorite" }
+  | { kind: "type"; value: "image" | "video" | "audio" };
 
 export interface Collection {
   id: number;

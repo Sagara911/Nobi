@@ -44,8 +44,8 @@ pub const VIDEO_EXTS: &[&str] = &["mp4", "webm", "mov", "mkv", "avi"];
 pub const AUDIO_EXTS: &[&str] = &["mp3", "wav", "ogg", "flac", "m4a", "aac"];
 /// 3D 模型格式：前端 three.js 查看器渲染；缩略图由查看器首帧经 set_thumb 写回
 pub const MODEL_EXTS: &[&str] = &["glb", "gltf", "obj", "fbx", "stl"];
-/// 3D model import switch. Preview rendering lives in the frontend ModelViewer.
-pub const ENABLE_3D: bool = true;
+/// 3D 已下线（本机 WebView2 呈现不了实时 GPU 画布）。false=不识别/不导入 3D。
+pub const ENABLE_3D: bool = false;
 /// 跳过缩略图/配色/CLIP 管线的格式（视频+音频+3D，Rust 渲不了），供 SQL NOT IN 过滤
 pub const MEDIA_FORMATS_SQL: &str = "('MP4','WEBM','MOV','MKV','AVI',\
     'MP3','WAV','OGG','FLAC','M4A','AAC','GLB','GLTF','OBJ','FBX','STL')";
