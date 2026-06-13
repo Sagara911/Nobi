@@ -8,8 +8,14 @@ import SelectionTranslateWindow from "./components/SelectionTranslateWindow";
 // （看球直开窗 web-d* 加载的是外部网址，不走本路由）
 const isRef = location.hash.startsWith("#ref");
 const isSelectionTranslate = location.hash.startsWith("#selection-translate");
-if (isRef) document.body.classList.add("ref-window");
-if (isSelectionTranslate) document.body.classList.add("selection-translate-window");
+if (isRef) {
+  document.documentElement.classList.add("ref-window");
+  document.body.classList.add("ref-window");
+}
+if (isSelectionTranslate) {
+  document.documentElement.classList.add("selection-translate-window");
+  document.body.classList.add("selection-translate-window");
+}
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
