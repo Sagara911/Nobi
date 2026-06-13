@@ -11,9 +11,52 @@ body.selection-translate-window #root {
   box-sizing: border-box;
   width: 100vw;
   height: 100vh;
-  padding: 8px;
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   color: #f4f4f6;
+}
+
+.stw-shell.compact {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.stw-shell.expanded {
+  padding: 8px;
+}
+
+.stw-chip {
+  width: 108px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(24, 24, 29, 0.96);
+  color: #f4f4f6;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stw-chip:hover {
+  background: rgba(34, 35, 42, 0.98);
+}
+
+.stw-chip-icon {
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #3f72e8;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .stw-card {

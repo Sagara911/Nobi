@@ -187,7 +187,7 @@ function App() {
       }
 
       const send = async (win: WebviewWindow) => {
-        await win.setSize(new LogicalSize(360, 150)).catch(() => {});
+        await win.setSize(new LogicalSize(116, 40)).catch(() => {});
         await win.setPosition(new PhysicalPosition(payload.x + 12, payload.y + 12)).catch(() => {});
         await win.show().catch(() => {});
         await emitTo(label, "selection-translate-payload", saved).catch(() => {});
@@ -202,17 +202,17 @@ function App() {
       const win = new WebviewWindow(label, {
         url: "index.html#selection-translate",
         title: "Nobi 翻译",
-        width: 360,
-        height: 150,
-        minWidth: 300,
-        minHeight: 118,
-        decorations: true,
-        transparent: false,
+        width: 116,
+        height: 40,
+        minWidth: 96,
+        minHeight: 40,
+        decorations: false,
+        transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: false,
         shadow: true,
-        focus: true,
+        focus: false,
         focusable: true,
       });
 

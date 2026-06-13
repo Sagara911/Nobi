@@ -7,11 +7,18 @@ import * as api from "../api";
 import "./SelectionTranslateWindow.css";
 
 const STORAGE_KEY = "nobi.selectionTranslate.payload";
+const CHIP_SIZE = new LogicalSize(116, 40);
+const PANEL_SIZE = new LogicalSize(420, 310);
+const BUSY_SIZE = new LogicalSize(400, 210);
 
-function readInitialPayload(): SelectionTranslatePayload | null {
+type WindowPayload = SelectionTranslatePayload & {
+  openPanel?: boolean;
+};
+
+function readInitialPayload(): WindowPayload | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as SelectionTranslatePayload) : null;
+    return raw ? (JSON.parse(raw) as WindowPayload) : null;
   } catch {
     return null;
   }
@@ -23,9 +30,8 @@ function snippet(text: string, max = 96) {
 }
 
 export default function SelectionTranslateWindow() {
-  const [payload, setPayload] = useState<SelectionTranslatePayload | null>(() =>
-    readInitialPayload()
-  );
+  const [payload, setPayload] = useState<WindowPayload | null>(() => readInitialPayload());
+  const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TranslationResult | null>(null);
   const [message, setMessage] = useState("");
@@ -35,11 +41,13 @@ export default function SelectionTranslateWindow() {
   const preview = useMemo(() => snippet(text), [text]);
 
   useEffect(() => {
-    const un = listen<SelectionTranslatePayload>("selection-translate-payload", (e) => {
+    const un = listen<WindowPayload>("selection-translate-payload", (e) => {
       setPayload(e.payload);
+      setExpanded(!!e.payload.openPanel);
       setResult(null);
       setMessage("");
-      void win().setSize(new LogicalSize(360, 150));
+      setBusy(false);
+      void win().setSize(e.payload.openPanel ? PANEL_SIZE : CHIP_SIZE);
     });
     return () => {
       un.then((f) => f());
@@ -55,6 +63,12 @@ export default function SelectionTranslateWindow() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (expanded || !text) return;
+    const timer = window.setTimeout(() => void closeWindow(), 3200);
+    return () => window.clearTimeout(timer);
+  }, [expanded, text]);
 
   async function closeWindow() {
     const current = win();
@@ -80,7 +94,7 @@ export default function SelectionTranslateWindow() {
     setBusy(true);
     setMessage("");
     setResult(null);
-    await win().setSize(new LogicalSize(400, 230)).catch(() => {});
+    await win().setSize(BUSY_SIZE).catch(() => {});
     try {
       const r = await api.translateText({
         text,
@@ -96,13 +110,21 @@ export default function SelectionTranslateWindow() {
           ? "当前模型不可用，下面是内置术语参考，不是完整翻译。"
           : r.warning || "",
       );
-      await win().setSize(new LogicalSize(420, 330)).catch(() => {});
+      await win().setSize(PANEL_SIZE).catch(() => {});
     } catch (e) {
       setMessage(`翻译服务不可用：${e}`);
-      await win().setSize(new LogicalSize(430, 250)).catch(() => {});
+      await win().setSize(BUSY_SIZE).catch(() => {});
     } finally {
       setBusy(false);
     }
+  }
+
+  async function expandAndTranslate() {
+    if (!text || busy) return;
+    setExpanded(true);
+    await win().setSize(BUSY_SIZE).catch(() => {});
+    await win().setFocus().catch(() => {});
+    void runTranslate();
   }
 
   async function copyResult() {
@@ -111,8 +133,19 @@ export default function SelectionTranslateWindow() {
     setMessage("已复制译文");
   }
 
+  if (!expanded) {
+    return (
+      <main className="stw-shell compact">
+        <button className="stw-chip" onClick={() => void expandAndTranslate()} title="翻译选中文本">
+          <span className="stw-chip-icon">译</span>
+          <span>翻译</span>
+        </button>
+      </main>
+    );
+  }
+
   return (
-    <main className="stw-shell">
+    <main className="stw-shell expanded">
       <section className="stw-card">
         <div className="stw-head" data-tauri-drag-region onPointerDown={startDrag}>
           <span>Nobi 翻译</span>
