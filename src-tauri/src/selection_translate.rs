@@ -17,6 +17,8 @@ use std::sync::{
 #[cfg(windows)]
 use tauri::Emitter;
 
+use tauri::Manager;
+
 #[cfg(windows)]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +45,15 @@ pub fn start(app: tauri::AppHandle) {
 
     #[cfg(not(windows))]
     let _ = app;
+}
+
+#[tauri::command]
+pub fn close_selection_translate_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("selection-translate") {
+        let _ = w.hide();
+        w.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]

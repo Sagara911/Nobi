@@ -1058,6 +1058,7 @@ pub fn run() {
             translation::save_glossary_term,
             translation::delete_glossary_term,
             translation::list_translation_history,
+            selection_translate::close_selection_translate_window,
             // board
             board::list_boards,
             board::create_board,

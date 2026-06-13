@@ -63,8 +63,10 @@ export default function SelectionTranslateWindow() {
     } catch {
       /* ignore */
     }
-    await current.hide().catch(() => {});
-    await current.close().catch(() => {});
+    await api.closeSelectionTranslateWindow().catch(async () => {
+      await current.hide().catch(() => {});
+      await current.close().catch(() => {});
+    });
   }
 
   function startDrag(e: React.PointerEvent<HTMLDivElement>) {
@@ -84,12 +86,16 @@ export default function SelectionTranslateWindow() {
         text,
         targetLang: "zh-CN",
         mode: "art_terms",
-        provider: "model",
+        provider: "auto",
         sourceApp: payload?.sourceApp || "system-selection",
         saveHistory: true,
       });
       setResult(r);
-      setMessage(r.warning || "");
+      setMessage(
+        r.provider === "builtin-fallback"
+          ? "当前模型不可用，下面是内置术语参考，不是完整翻译。"
+          : r.warning || "",
+      );
       await win().setSize(new LogicalSize(420, 330)).catch(() => {});
     } catch (e) {
       setMessage(`翻译服务不可用：${e}`);
@@ -108,7 +114,7 @@ export default function SelectionTranslateWindow() {
   return (
     <main className="stw-shell">
       <section className="stw-card">
-        <div className="stw-head" onPointerDown={startDrag}>
+        <div className="stw-head" data-tauri-drag-region onPointerDown={startDrag}>
           <span>Nobi 翻译</span>
           <button
             className="stw-icon-btn"

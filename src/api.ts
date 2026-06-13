@@ -102,6 +102,8 @@ export const setSettings = (settings: AiCfg) => invoke<void>("set_settings", { s
 // ---- 翻译 / 术语库 ----
 export const translateText = (req: TranslationRequest) =>
   invoke<TranslationResult>("translate_text", { req });
+export const closeSelectionTranslateWindow = () =>
+  invoke<void>("close_selection_translate_window");
 export const listGlossaryTerms = () => invoke<GlossaryTerm[]>("list_glossary_terms");
 export const saveGlossaryTerm = (term: GlossaryTermInput) =>
   invoke<number>("save_glossary_term", { term });

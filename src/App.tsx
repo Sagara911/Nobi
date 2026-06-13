@@ -206,13 +206,13 @@ function App() {
         height: 150,
         minWidth: 300,
         minHeight: 118,
-        decorations: false,
-        transparent: true,
+        decorations: true,
+        transparent: false,
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: false,
         shadow: true,
-        focus: false,
+        focus: true,
         focusable: true,
       });
 
