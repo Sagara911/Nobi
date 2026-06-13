@@ -153,6 +153,9 @@ fn handle_right_click(x: i32, y: i32, event_ms: u64) {
         if text.chars().count() < 2 {
             return;
         }
+        if !looks_like_english_text(&text) {
+            return;
+        }
 
         let text = clamp_text(text, 2_000);
         if let Some(app) = APP.get() {
@@ -452,6 +455,60 @@ fn selected_text_from_element(
 
         let normalized = out.trim().to_string();
         (!normalized.is_empty()).then_some(normalized)
+    }
+}
+
+#[cfg(windows)]
+fn looks_like_english_text(text: &str) -> bool {
+    let mut latin_letters = 0usize;
+    let mut language_letters = 0usize;
+
+    for ch in text.chars() {
+        if ch.is_ascii_alphabetic() {
+            latin_letters += 1;
+            language_letters += 1;
+        } else if is_cjk_char(ch) || ch.is_alphabetic() {
+            language_letters += 1;
+        }
+    }
+
+    latin_letters >= 2 && latin_letters * 100 >= language_letters.max(1) * 82
+}
+
+#[cfg(windows)]
+fn is_cjk_char(ch: char) -> bool {
+    matches!(
+        ch as u32,
+        0x3040..=0x30ff
+            | 0x3400..=0x4dbf
+            | 0x4e00..=0x9fff
+            | 0xac00..=0xd7af
+            | 0xf900..=0xfaff
+            | 0x20000..=0x2a6df
+            | 0x2a700..=0x2b73f
+            | 0x2b740..=0x2b81f
+            | 0x2b820..=0x2ceaf
+    )
+}
+
+#[cfg(all(test, windows))]
+mod selection_translate_tests {
+    use super::looks_like_english_text;
+
+    #[test]
+    fn detects_english_selection() {
+        assert!(looks_like_english_text(
+            "roughness map and ambient occlusion are common material terms."
+        ));
+        assert!(looks_like_english_text("ambient_occlusion"));
+        assert!(looks_like_english_text("UV"));
+    }
+
+    #[test]
+    fn ignores_non_english_selection() {
+        assert!(!looks_like_english_text("材质和粗糙度"));
+        assert!(!looks_like_english_text("12345 / 67890"));
+        assert!(!looks_like_english_text("翻译 translate"));
     }
 }
 
