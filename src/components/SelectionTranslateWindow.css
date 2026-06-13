@@ -47,6 +47,16 @@ body.selection-translate-window #root {
   background: rgba(34, 35, 42, 0.98);
 }
 
+.stw-chip:focus {
+  outline: none;
+}
+
+.stw-chip:focus-visible {
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.38),
+    0 0 0 2px rgba(63, 114, 232, 0.5);
+}
+
 .stw-chip-icon {
   width: 19px;
   height: 19px;
@@ -100,6 +110,18 @@ body.selection-translate-window #root {
 .stw-icon-btn:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+
+.stw-icon-btn:focus,
+.stw-primary:focus,
+.stw-actions button:focus {
+  outline: none;
+}
+
+.stw-icon-btn:focus-visible,
+.stw-primary:focus-visible,
+.stw-actions button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(63, 114, 232, 0.5);
 }
 
 .stw-body {

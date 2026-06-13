@@ -211,7 +211,7 @@ function App() {
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: false,
-        shadow: true,
+        shadow: false,
         focus: false,
         focusable: true,
       });
