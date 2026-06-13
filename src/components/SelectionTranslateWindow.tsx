@@ -46,6 +46,27 @@ export default function SelectionTranslateWindow() {
     };
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      void closeWindow();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  async function closeWindow() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    await win()
+      .close()
+      .catch(() => win().hide());
+  }
+
   async function runTranslate() {
     if (!text || busy) return;
     setBusy(true);
@@ -83,7 +104,16 @@ export default function SelectionTranslateWindow() {
       <section className="stw-card">
         <div className="stw-head" onPointerDown={() => void win().startDragging()}>
           <span>Nobi 翻译</span>
-          <button className="stw-icon-btn" onClick={() => void win().close()} title="关闭">
+          <button
+            className="stw-icon-btn"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              void closeWindow();
+            }}
+            title="关闭"
+            aria-label="关闭"
+          >
             ×
           </button>
         </div>
