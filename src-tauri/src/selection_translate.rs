@@ -30,6 +30,14 @@ struct SelectionTranslatePayload {
 }
 
 #[cfg(windows)]
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SelectionTranslateClickPayload {
+    x: i32,
+    y: i32,
+}
+
+#[cfg(windows)]
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 #[cfg(windows)]
 static STARTED: AtomicBool = AtomicBool::new(false);
@@ -91,14 +99,35 @@ unsafe extern "system" fn mouse_hook(
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
-    use windows::Win32::UI::WindowsAndMessaging::{CallNextHookEx, MSLLHOOKSTRUCT, WM_RBUTTONDOWN};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, MSLLHOOKSTRUCT, WM_LBUTTONDOWN, WM_RBUTTONDOWN,
+    };
 
-    if ncode >= 0 && wparam.0 as u32 == WM_RBUTTONDOWN {
+    if ncode >= 0 && (wparam.0 as u32 == WM_RBUTTONDOWN || wparam.0 as u32 == WM_LBUTTONDOWN) {
         let info = *(lparam.0 as *const MSLLHOOKSTRUCT);
-        handle_right_click(info.pt.x, info.pt.y, info.time as u64);
+        if wparam.0 as u32 == WM_RBUTTONDOWN {
+            handle_right_click(info.pt.x, info.pt.y, info.time as u64);
+        } else {
+            handle_left_click(info.pt.x, info.pt.y);
+        }
     }
 
     CallNextHookEx(None, ncode, wparam, lparam)
+}
+
+#[cfg(windows)]
+fn handle_left_click(x: i32, y: i32) {
+    let Some(app) = APP.get() else {
+        return;
+    };
+    if app.get_webview_window("selection-translate").is_none() {
+        return;
+    }
+    let _ = app.emit_to(
+        "selection-translate",
+        "selection-translate-left-clicked",
+        SelectionTranslateClickPayload { x, y },
+    );
 }
 
 #[cfg(windows)]

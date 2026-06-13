@@ -17,6 +17,11 @@ type WindowPayload = SelectionTranslatePayload & {
   openPanel?: boolean;
 };
 
+type ScreenClickPayload = {
+  x: number;
+  y: number;
+};
+
 function readInitialPayload(): WindowPayload | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -73,6 +78,28 @@ export default function SelectionTranslateWindow() {
     const timer = window.setTimeout(() => void closeWindow(), 3200);
     return () => window.clearTimeout(timer);
   }, [expanded, text]);
+
+  useEffect(() => {
+    if (expanded) return;
+
+    const un = listen<ScreenClickPayload>("selection-translate-left-clicked", async (e) => {
+      const current = win();
+      const pos = await current.outerPosition().catch(() => null);
+      if (!pos) return;
+
+      const { x, y } = e.payload;
+      const inside =
+        x >= pos.x &&
+        x <= pos.x + SELECTION_TRANSLATE_CHIP_SIZE.width &&
+        y >= pos.y &&
+        y <= pos.y + SELECTION_TRANSLATE_CHIP_SIZE.height;
+      if (!inside) void closeWindow();
+    });
+
+    return () => {
+      un.then((f) => f());
+    };
+  }, [expanded]);
 
   useEffect(() => {
     if (!expanded) return;
