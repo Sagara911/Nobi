@@ -1576,7 +1576,9 @@ export default function BoardCanvas({
     const pad = 32;
     const scale = Math.min(2, 8000 / Math.max(b.w + pad * 2, b.h + pad * 2));
     const holder = document.createElement("div");
-    holder.style.display = "none";
+    // 离屏渲染：用屏外定位而非 display:none——Konva Stage 在 display:none 容器里
+    // 会得到空画布（toDataURL 返回空），屏外定位仍正常渲染。
+    holder.style.cssText = "position:fixed;left:-100000px;top:0;pointer-events:none;opacity:0;";
     document.body.appendChild(holder);
     try {
       const stage = new Konva.Stage({
@@ -1595,6 +1597,15 @@ export default function BoardCanvas({
       cloneLayer.draw();
       const dataUrl = stage.toDataURL({ mimeType: "image/png" });
       stage.destroy();
+      // 守卫：空内容时给明确提示，别再抛 "missing dataB64" 这种谜之错误
+      if (!dataUrl || dataUrl.indexOf(",") < 0) {
+        await msgDialog(
+          "导出内容为空（可能图片还没加载完，或选区没有可见内容）。稍后重试，或改成「全部」导出。",
+          { title: "导出 PNG", kind: "warning" },
+        ).catch(() => {});
+        return;
+      }
+      const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
       const name = `${boards.find((bd) => bd.id === boardIdRef.current)?.name || "画板"}.png`;
       let path: string | null = null;
       try {
@@ -1621,7 +1632,7 @@ export default function BoardCanvas({
       }
       if (!path) return; // 用户取消了保存对话框
       try {
-        await saveFile(path, dataUrl.split(",")[1]);
+        await saveFile(path, b64);
         // 存好后直接打开所在文件夹并高亮该文件——再也不用找
         await revealItemInDir(path).catch(() => {});
       } catch (e) {
