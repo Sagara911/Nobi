@@ -47,8 +47,9 @@ export const chatSetOpacityKey = (which: "down" | "up", accel: string) =>
 export const getAutostart = () => autostartIsEnabled();
 export const setAutostart = (on: boolean) =>
   on ? autostartEnable() : autostartDisable();
-// 聊天未读提醒（托盘红点）：来新消息 +1 / 看了清零
-export const chatBumpUnread = () => invoke<void>("chat_bump_unread");
+// 聊天未读提醒（托盘红点 + 任务栏闪烁）：来新消息 +1（label=对应群窗，没开则闪主窗）/ 看了清零
+export const chatBumpUnread = (label?: string) =>
+  invoke<void>("chat_bump_unread", { label });
 export const chatClearUnread = () => invoke<void>("chat_clear_unread");
 
 // ---- 素材库 ----

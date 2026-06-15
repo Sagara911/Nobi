@@ -171,6 +171,47 @@
 .chat-text {
   white-space: pre-wrap;
 }
+/* @提及 */
+.chat-at {
+  color: #8ab4f8;
+  font-weight: 600;
+}
+.chat-at.me {
+  background: #2f6fdd;
+  color: #fff;
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.chat-bubble.at-me {
+  box-shadow: inset 3px 0 0 #2f6fdd;
+}
+.chat-row.mine .chat-bubble.at-me {
+  box-shadow: inset -3px 0 0 #2f6fdd;
+}
+/* @自动补全弹层 */
+.chat-mention-pop {
+  flex: none;
+  border-top: 1px solid #34363b;
+  background: #232428;
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.chat-mention-item {
+  background: none;
+  border: none;
+  color: #e6e6e6;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.chat-mention-item:hover,
+.chat-mention-item.first {
+  background: #2f3237;
+}
 .chat-img {
   max-width: 220px;
   max-height: 220px;

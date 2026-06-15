@@ -145,6 +145,28 @@ function MsgAvatar({ name, avatar }: { name: string; avatar?: string }) {
   );
 }
 
+/** 把消息文本里的 @昵称 高亮；@到自己或@所有人时更醒目 */
+function renderBody(body: string, myNick: string) {
+  return body.split(/(@[^\s@]+)/g).map((p, i) => {
+    if (p.startsWith("@")) {
+      const name = p.slice(1);
+      const me = name === myNick || name === "所有人";
+      return (
+        <span key={i} className={`chat-at${me ? " me" : ""}`}>
+          {p}
+        </span>
+      );
+    }
+    return <span key={i}>{p}</span>;
+  });
+}
+
+/** 这条消息是否 @ 了我（含 @所有人）*/
+function mentionsMe(body: string | undefined, myNick: string): boolean {
+  if (!body || !myNick) return false;
+  return body.includes(`@${myNick}`) || body.includes("@所有人");
+}
+
 const STATUS_TEXT: Record<ConnStatus, string> = {
   idle: "未连接",
   connecting: "连接中…",
@@ -177,6 +199,28 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   const [dragging, setDragging] = useState(false);
   const [panel, setPanel] = useState<null | "emoji" | "sticker">(null);
   const [stickers, setStickers] = useState<Sticker[]>(() => getStickers());
+  const [mentionQ, setMentionQ] = useState<string | null>(null); // 正在输入的 @查询(null=没在@)
+
+  // @候选：聊过天的人(去重，排除自己) + 「所有人」
+  const mentionNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of messages) if (m.sender && m.clientId !== cfg?.clientId) set.add(m.sender);
+    return ["所有人", ...set];
+  }, [messages, cfg]);
+  const mentionList =
+    mentionQ === null
+      ? []
+      : mentionNames.filter((n) => n.toLowerCase().includes(mentionQ.toLowerCase())).slice(0, 8);
+
+  const onDraftChange = (val: string) => {
+    setDraft(val);
+    const m = val.match(/@([^\s@]*)$/); // 末尾正在打的 @词
+    setMentionQ(m ? m[1] : null);
+  };
+  const pickMention = (name: string) => {
+    setDraft((d) => d.replace(/@([^\s@]*)$/, `@${name} `));
+    setMentionQ(null);
+  };
 
   const backendRef = useRef<ChatBackend | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
@@ -280,6 +324,54 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  // 窗口取消隐藏后未聚焦时，原生滚动要先点一下才生效——手动接管滚轮，hover 即可滚
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      el.scrollTop += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Ctrl+V 直接粘贴图片/视频发送（纯文本粘贴照常进输入框）
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const backend = backendRef.current;
+      if (!backend || status !== "connected") return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const it of Array.from(items)) {
+        if (it.kind === "file" && (it.type.startsWith("image/") || it.type.startsWith("video/"))) {
+          const f = it.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (!files.length) return;
+      e.preventDefault();
+      void (async () => {
+        for (const f of files) {
+          const ext = (f.type.split("/")[1] || "png").split(";")[0];
+          const isVid = f.type.startsWith("video/");
+          try {
+            await backend.sendAsset({
+              name: f.name || `粘贴.${ext}`,
+              blob: f,
+              kind: isVid ? "video" : "image",
+            });
+          } catch (err) {
+            setNotice(`粘贴发送失败：${String(err)}`);
+          }
+        }
+      })();
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [status]);
+
   if (!cfg) {
     return (
       <div className="chat-setup">
@@ -382,12 +474,13 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
         )}
         {messages.map((m) => {
           const mine = m.clientId === cfg.clientId;
+          const atMe = !mine && mentionsMe(m.body, cfg.nickname);
           return (
             <div key={m.id} className={`chat-row ${mine ? "mine" : "theirs"}`}>
               <MsgAvatar name={m.sender} avatar={m.avatar} />
               <div className="chat-col">
                 {!mine && <div className="chat-sender">{m.sender}</div>}
-                <div className="chat-bubble">
+                <div className={`chat-bubble${atMe ? " at-me" : ""}`}>
                   {m.kind === "image" && m.assetUrl ? (
                     <a href={m.assetUrl} target="_blank" rel="noreferrer">
                       <img className="chat-img" src={m.assetUrl} alt={m.assetName || "图片"} />
@@ -396,7 +489,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
                   {m.kind === "video" && m.assetUrl ? (
                     <video className="chat-video" src={m.assetUrl} controls preload="metadata" />
                   ) : null}
-                  {m.body ? <div className="chat-text">{m.body}</div> : null}
+                  {m.body ? <div className="chat-text">{renderBody(m.body, cfg.nickname)}</div> : null}
                 </div>
                 <div className="chat-time">{new Date(m.createdAt).toLocaleTimeString().slice(0, 5)}</div>
               </div>
@@ -442,6 +535,21 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
         </div>
       )}
 
+      {mentionQ !== null && mentionList.length > 0 && (
+        <div className="chat-mention-pop">
+          {mentionList.map((n, idx) => (
+            <button
+              key={n}
+              type="button"
+              className={`chat-mention-item${idx === 0 ? " first" : ""}`}
+              onClick={() => pickMention(n)}
+            >
+              @{n}
+            </button>
+          ))}
+        </div>
+      )}
+
       <footer className="chat-input">
         <button
           className="chat-emoji-btn"
@@ -452,9 +560,21 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
         </button>
         <textarea
           value={draft}
-          placeholder={`以 ${cfg.nickname || "我"} 的身份发消息…`}
-          onChange={(e) => setDraft(e.target.value)}
+          placeholder={`以 ${cfg.nickname || "我"} 的身份发消息…（@ 提到某人）`}
+          onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => {
+            if (mentionQ !== null && mentionList.length) {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                pickMention(mentionList[0]);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setMentionQ(null);
+                return;
+              }
+            }
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               void handleSend();

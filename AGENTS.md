@@ -49,6 +49,8 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **权限** `capabilities/chat-window.json`：`["chat","chat-*"]` + create-webview-window
 - **Supabase 建表** `docs/chat-supabase-setup.sql`：messages 表（含 `avatar` 列）+ RLS（anon 读写）+ Realtime + chat-assets 公开桶 + **24h pg_cron 阅后即焚**（`nobi-chat-cleanup` 每小时删超 24h 消息/图片，存量不涨、长期免费）。**选头像/emoji 前用户须跑 `alter table messages add column if not exists avatar text;`**
 - 依赖：`@supabase/supabase-js`。**发图/视频/多服务器真机端到端未最终确认**
+- **v0.2.2 新增**：@提及(输入 `@` 弹候选=聊过天的人+所有人，`renderBody` 高亮，@到自己整条 `at-me` 高亮)；任务栏闪烁提醒(`flash_taskbar` FlashWindowEx，`chat_bump_unread(label)` 闪对应群窗/没开闪主窗)；Ctrl+V 粘贴图片/视频直接发；取消隐藏后滚轮失效 → `.chat-list` 手动接管 wheel；透明度 Alt+V/B **长按连调**(`CHAT_HOLD`/`CHAT_HOLD_GEN` 重复线程，同看球)
+- **画板导出 PNG 修复**(`src/board/BoardCanvas.tsx`)：原浏览器 `<a download>` 兜底在 WebView2 会存出假 png(488B HTML)，改为原生 saveDialog→saveFile→`revealItemInDir` 打开文件夹，仅纯浏览器预览才用 `<a download>`
 
 ## 开机自启
 

@@ -259,6 +259,12 @@ fn set_chat_boss_async(app: &tauri::AppHandle, on: bool) {
 #[cfg(desktop)]
 static CHAT_OPACITY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(255);
 
+// 长按连调：当前按住的键(0 无/1 调淡/2 调浓) + 代次(防止旧重复线程乱入)
+#[cfg(desktop)]
+static CHAT_HOLD: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+#[cfg(desktop)]
+static CHAT_HOLD_GEN: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
 #[cfg(desktop)]
 const CHAT_OPACITY_DOWN_ACCEL: &str = "Alt+KeyV";
 #[cfg(desktop)]
@@ -457,13 +463,41 @@ fn update_tray_unread(app: &tauri::AppHandle) {
     }
 }
 
-/// 收到一条未读（主窗后台订阅调用）：未读 +1 并亮托盘红点。
+/// 闪烁任务栏按钮(FlashWindowEx)：label 窗存在就闪它，否则闪主窗。一直闪到该窗被带到前台。
+#[cfg(windows)]
+fn flash_taskbar(app: &tauri::AppHandle, label: &str) {
+    use tauri::Manager;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        FlashWindowEx, FLASHWINFO, FLASHW_ALL, FLASHW_TIMERNOFG,
+    };
+    let win = app
+        .get_webview_window(label)
+        .or_else(|| app.get_webview_window("main"));
+    if let Some(w) = win {
+        if let Ok(hwnd) = w.hwnd() {
+            let mut fi = FLASHWINFO {
+                cbSize: std::mem::size_of::<FLASHWINFO>() as u32,
+                hwnd,
+                dwFlags: FLASHW_ALL | FLASHW_TIMERNOFG,
+                uCount: 0,
+                dwTimeout: 0,
+            };
+            unsafe {
+                let _ = FlashWindowEx(&mut fi);
+            }
+        }
+    }
+}
+
+/// 收到一条未读（主窗后台订阅调用）：未读 +1、亮托盘红点、闪任务栏按钮(label 群窗优先)。
 #[cfg(desktop)]
 #[tauri::command]
-fn chat_bump_unread(app: tauri::AppHandle) {
+fn chat_bump_unread(app: tauri::AppHandle, label: Option<String>) {
     use std::sync::atomic::Ordering;
     CHAT_UNREAD.fetch_add(1, Ordering::Relaxed);
     update_tray_unread(&app);
+    #[cfg(windows)]
+    flash_taskbar(&app, label.as_deref().unwrap_or("main"));
 }
 
 /// 清零未读（打开/聚焦聊天窗时调用）：托盘恢复正常图标。
@@ -1150,12 +1184,38 @@ pub fn run() {
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, shortcut, event| {
-                            // 聊天窗透明度：Alt+V 调淡 / Alt+B 调浓
+                            // 聊天窗透明度：Alt+V 调淡 / Alt+B 调浓（支持长按连调，同看球）
                             {
                                 let (od, ou) = chat_opacity_shortcuts();
                                 if *shortcut == od || *shortcut == ou {
+                                    let down = *shortcut == od;
+                                    let id = if down { 1u8 } else { 2u8 };
                                     if event.state() == ShortcutState::Pressed {
-                                        chat_opacity_step(app, *shortcut == od);
+                                        chat_opacity_step(app, down); // 按下立即一步
+                                        let my = CHAT_HOLD_GEN
+                                            .fetch_add(1, Ordering::Relaxed)
+                                            .wrapping_add(1);
+                                        CHAT_HOLD.store(id, Ordering::Relaxed);
+                                        let app2 = app.clone();
+                                        std::thread::spawn(move || {
+                                            std::thread::sleep(std::time::Duration::from_millis(330));
+                                            for _ in 0..200 {
+                                                if CHAT_HOLD.load(Ordering::Relaxed) != id
+                                                    || CHAT_HOLD_GEN.load(Ordering::Relaxed) != my
+                                                {
+                                                    break;
+                                                }
+                                                let a = app2.clone();
+                                                let _ = app2.run_on_main_thread(move || {
+                                                    chat_opacity_step(&a, down)
+                                                });
+                                                std::thread::sleep(
+                                                    std::time::Duration::from_millis(110),
+                                                );
+                                            }
+                                        });
+                                    } else {
+                                        CHAT_HOLD.store(0, Ordering::Relaxed);
                                     }
                                     return;
                                 }
