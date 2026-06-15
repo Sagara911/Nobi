@@ -7,6 +7,7 @@ Nobi：AI 驱动的本地美术素材管理器。Tauri 2 + React 19 + TypeScript
 
 - `docs/ARCHITECTURE.md` —— 架构纪律（**改代码前先读**：invoke 只能在 api.ts、表结构只能在 db.rs 等五条铁律）
 - `docs/RELEASE.md` —— 发版流程（自动发版一条命令 + 手动备用 + 坑表）
+- `docs/TRANSLATION.md` —— 翻译子系统（三入口/智能路由/离线 ECDICT 词典/离线 OPUS-MT 整句/按需下载；**含发版前必做项**。现在分支 `feat/offline-translation`，未合 main）
 
 ## 常用命令
 
