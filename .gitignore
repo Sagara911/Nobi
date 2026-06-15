@@ -30,6 +30,8 @@ dist-ssr
 *.sqlite
 *.sqlite3
 *.db
+# 例外：精简版离线英汉词典（~5MB，随仓库走，免得换机器/github 被挡时无法重建）
+!src-tauri/resources/ecdict.db
 /thumbnails-cache/
 /test-assets/
 
