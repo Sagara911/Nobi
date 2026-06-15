@@ -1,0 +1,279 @@
+/* 聊天小窗样式。配色尽量跟随系统深浅，简洁为主。 */
+
+.chat-win {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: #1e1f22;
+  color: #e6e6e6;
+  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+/* 拖图进来时的全窗提示蒙层 */
+.chat-dropzone {
+  position: absolute;
+  inset: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #4c7bd1;
+  border-radius: 12px;
+  background: rgba(47, 111, 221, 0.12);
+  color: #8ab4f8;
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #26282c;
+  border-bottom: 1px solid #34363b;
+  flex: none;
+}
+.chat-head-room {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-room {
+  font-weight: 600;
+}
+.chat-status {
+  font-size: 11px;
+  color: #9aa0a6;
+}
+.chat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #888;
+}
+.chat-dot-connected {
+  background: #3fb950;
+}
+.chat-dot-connecting {
+  background: #d29922;
+}
+.chat-dot-error {
+  background: #f85149;
+}
+.chat-dot-disconnected,
+.chat-dot-idle {
+  background: #6e7681;
+}
+.chat-gear {
+  background: none;
+  border: none;
+  color: #9aa0a6;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.chat-gear:hover {
+  background: #34363b;
+  color: #e6e6e6;
+}
+
+.chat-error {
+  padding: 6px 12px;
+  background: #3a1d1d;
+  color: #ffb4ad;
+  font-size: 12px;
+  flex: none;
+}
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-empty {
+  margin: auto;
+  color: #6e7681;
+  text-align: center;
+  font-size: 12px;
+  padding: 20px;
+}
+
+.chat-row {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+}
+.chat-row.mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.chat-row.theirs {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+.chat-sender {
+  font-size: 11px;
+  color: #8ab4f8;
+  margin: 0 4px 2px;
+}
+.chat-bubble {
+  background: #34363b;
+  border-radius: 12px;
+  padding: 7px 11px;
+  word-break: break-word;
+}
+.chat-row.mine .chat-bubble {
+  background: #2b5278;
+}
+.chat-text {
+  white-space: pre-wrap;
+}
+.chat-img {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 8px;
+  display: block;
+}
+.chat-img + .chat-text {
+  margin-top: 6px;
+}
+.chat-time {
+  font-size: 10px;
+  color: #6e7681;
+  margin: 2px 4px 0;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid #34363b;
+  background: #26282c;
+  flex: none;
+}
+.chat-input textarea {
+  flex: 1;
+  resize: none;
+  background: #1e1f22;
+  border: 1px solid #3a3d42;
+  border-radius: 8px;
+  color: #e6e6e6;
+  padding: 7px 9px;
+  font: inherit;
+  outline: none;
+}
+.chat-input textarea:focus {
+  border-color: #4c7bd1;
+}
+.chat-input button {
+  align-self: flex-end;
+  background: #2f6fdd;
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font: inherit;
+}
+.chat-input button:disabled {
+  background: #3a3d42;
+  color: #6e7681;
+  cursor: default;
+}
+
+/* ===== 配置表单 ===== */
+.chat-setup {
+  height: 100vh;
+  overflow-y: auto;
+  padding: 16px 18px;
+  background: #1e1f22;
+  color: #e6e6e6;
+  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.chat-setup h3 {
+  margin: 0 0 14px;
+}
+.chat-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.chat-field > span {
+  font-size: 12px;
+  color: #9aa0a6;
+}
+.chat-field input,
+.chat-field select {
+  background: #26282c;
+  border: 1px solid #3a3d42;
+  border-radius: 8px;
+  color: #e6e6e6;
+  padding: 8px 10px;
+  font: inherit;
+  outline: none;
+}
+.chat-field input:focus,
+.chat-field select:focus {
+  border-color: #4c7bd1;
+}
+.chat-hint {
+  font-size: 11px;
+  color: #6e7681;
+  margin: -4px 0 12px;
+}
+.chat-room-row {
+  display: flex;
+  gap: 8px;
+}
+.chat-room-row input {
+  flex: 1;
+  min-width: 0;
+}
+.chat-room-row button {
+  flex: none;
+  white-space: nowrap;
+  background: #34363b;
+  border: none;
+  color: #e6e6e6;
+  border-radius: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.chat-room-row button:hover {
+  background: #3f4148;
+}
+.chat-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.chat-setup-actions button {
+  background: #34363b;
+  border: none;
+  color: #e6e6e6;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font: inherit;
+}
+.chat-setup-actions button.primary {
+  background: #2f6fdd;
+  color: #fff;
+}
+.chat-setup-actions button:disabled {
+  background: #3a3d42;
+  color: #6e7681;
+  cursor: default;
+}

@@ -43,6 +43,7 @@ import TranslationModal from "./components/TranslationModal";
 import UpdateModal from "./components/UpdateModal";
 import ImageViewer from "./components/ImageViewer";
 import { buildContactSheetPdf, bytesToB64 } from "./contactSheet";
+import { CHAT_WINDOW_LABEL, pushOutbox, getActiveRoom } from "./chat";
 import {
   SELECTION_TRANSLATE_CHIP_SIZE,
   selectionTranslatePosition,
@@ -1178,6 +1179,58 @@ function App() {
     });
   }
 
+  /** 打开聊天启动器（发起/加入群面板；已开则聚焦） */
+  async function openChatWindow() {
+    const existing = await WebviewWindow.getByLabel(CHAT_WINDOW_LABEL).catch(() => null);
+    if (existing) {
+      await existing.setFocus().catch(() => {});
+      return;
+    }
+    const win = new WebviewWindow(CHAT_WINDOW_LABEL, {
+      url: "index.html#chat",
+      title: "Nobi 聊天",
+      width: 340,
+      height: 420,
+      resizable: true,
+    });
+    win.once("tauri://error", (e) => setStatus(`聊天窗口打开失败：${JSON.stringify(e.payload)}`));
+  }
+
+  /** 打开（或聚焦）某房间的独立聊天窗 */
+  async function openChatRoom(room: string) {
+    const label = `chat-${room.replace(/[^\w-]/g, "_")}`;
+    const existing = await WebviewWindow.getByLabel(label).catch(() => null);
+    if (existing) {
+      await existing.setFocus().catch(() => {});
+      return;
+    }
+    const win = new WebviewWindow(label, {
+      url: `index.html#chat?room=${encodeURIComponent(room)}`,
+      title: `Nobi 聊天 · ${room}`,
+      width: 380,
+      height: 560,
+      minWidth: 300,
+      minHeight: 360,
+      resizable: true,
+      // 关掉 Tauri 原生拖放拦截，让窗口能用 HTML5 拖放收桌面拖进来的图片
+      dragDropEnabled: false,
+    });
+    win.once("tauri://error", (e) => setStatus(`聊天窗口打开失败：${JSON.stringify(e.payload)}`));
+  }
+
+  /** 把素材发到"当前活跃的群"（最后点过的那个群窗口）；没进群则先开启动器 */
+  function sendAssetToFriend(a: Asset) {
+    const room = getActiveRoom();
+    if (!room) {
+      void openChatWindow();
+      setStatus("先进入一个群，再右键发素材（或直接把图拖进群窗口）");
+      return;
+    }
+    pushOutbox({ path: a.path, name: a.name, room });
+    void openChatRoom(room);
+    setStatus(`已发往群 ${room}：${a.name}`);
+  }
+
   // 看图/练习浮层：多选时拿选中的当播放列表（练 gesture），否则用当前过滤列表。
   // 音频/视频没有静态画面，不进看图浮层。
   function openViewer(id: number) {
@@ -1241,6 +1294,7 @@ function App() {
       items: [
         { label: "画板", action: () => ensurePanel("board", "画板") },
         { label: "📺 看球小窗…", action: () => setShowWebTV(true) },
+        { label: "💬 聊天…", action: () => void openChatWindow() },
         { label: "翻译实验室…", action: () => setShowTranslation(true) },
         { label: "Dobby 工具站", action: () => openUrl(DOBBY_URL) },
         { sep: true },
@@ -1448,6 +1502,17 @@ function App() {
                 }}
               >
                 悬浮到桌面（置顶参考）
+              </div>
+            )}
+            {isImage(ctx.asset) && (
+              <div
+                className="ctx-item"
+                onClick={() => {
+                  sendAssetToFriend(ctx.asset);
+                  setCtx(null);
+                }}
+              >
+                发给朋友（聊天）
               </div>
             )}
             {(isImage(ctx.asset) || isModel(ctx.asset)) && <div className="ctx-sep" />}

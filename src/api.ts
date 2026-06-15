@@ -29,6 +29,11 @@ export const webSetKey = (action: string, accel: string) =>
   invoke<void>("web_set_key", { action, accel });
 export const webResetKeys = () => invoke<void>("web_reset_keys");
 
+// 聊天老板键：取当前加速键 / 改键（accel 格式如 "Alt+KeyC"）
+export const chatGetBossKey = () => invoke<string>("chat_get_boss_key");
+export const chatSetBossKey = (accel: string) =>
+  invoke<void>("chat_set_boss_key", { accel });
+
 // ---- 素材库 ----
 export const listAssets = () => invoke<Asset[]>("list_assets");
 export const importFolder = (path: string) => invoke<number>("import_folder", { path });

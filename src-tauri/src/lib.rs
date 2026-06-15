@@ -61,6 +61,8 @@ fn toggle_web_windows(app: &tauri::AppHandle) {
             let _ = w.hide();
         } else {
             let _ = w.show();
+            #[cfg(windows)]
+            hide_from_alt_tab(w); // show 可能把窗重新塞回 Alt+Tab，补一刀
             let _ = w.eval(PLAY_JS); // 显出来再续播
         }
     }
@@ -78,6 +80,166 @@ fn toggle_web_windows(app: &tauri::AppHandle) {
     //（async：本函数从快捷键回调进来，主线程上同步注册会自锁）
     set_web_hotkeys_async(app, true, !any_visible);
     WEB_CTRLS_ON.store(!any_visible, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// 聊天窗（chat 启动器 + chat-* 房间窗）的标签判定。
+fn is_chat_label(l: &str) -> bool {
+    l == "chat" || l.starts_with("chat-")
+}
+
+/// 聊天老板键的默认加速键（Alt+C，C=Chat，Nobi 里未被看球键占用）。
+/// 加速键格式 = 修饰符 + W3C code（"Alt+KeyC"），与前端抓键、Shortcut::from_str 三方一致。
+#[cfg(desktop)]
+const CHAT_BOSS_ACCEL: &str = "Alt+KeyC";
+
+/// 用户自定义的聊天老板键（空=用默认 CHAT_BOSS_ACCEL）。存 chat_prefs.json，启动时读回。
+#[cfg(desktop)]
+static CHAT_BOSS_KEY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// 聊天老板键当前是否占用中（随聊天窗存在占、全关归还，避免长期霸占全局键）。
+#[cfg(desktop)]
+static CHAT_BOSS_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 当前生效的聊天老板键加速键串（自定义优先，否则默认）。
+#[cfg(desktop)]
+fn chat_boss_accel() -> String {
+    let v = CHAT_BOSS_KEY.lock().map(|s| s.clone()).unwrap_or_default();
+    if v.trim().is_empty() {
+        CHAT_BOSS_ACCEL.to_string()
+    } else {
+        v
+    }
+}
+
+#[cfg(desktop)]
+fn chat_boss_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+    Shortcut::from_str(&chat_boss_accel())
+        .or_else(|_| Shortcut::from_str(CHAT_BOSS_ACCEL))
+        .expect("默认聊天老板键必须合法")
+}
+
+#[cfg(desktop)]
+fn chat_prefs_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("chat_prefs.json"))
+}
+
+#[cfg(desktop)]
+fn save_chat_prefs(app: &tauri::AppHandle) {
+    let prefs = serde_json::json!({ "bossKey": chat_boss_accel() });
+    if let Some(p) = chat_prefs_path(app) {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, prefs.to_string());
+    }
+}
+
+#[cfg(desktop)]
+fn load_chat_prefs(app: &tauri::AppHandle) {
+    if let Some(p) = chat_prefs_path(app) {
+        if let Ok(txt) = std::fs::read_to_string(&p) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                if let Some(k) = v.get("bossKey").and_then(|x| x.as_str()) {
+                    if let Ok(mut slot) = CHAT_BOSS_KEY.lock() {
+                        *slot = k.to_string();
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 读当前聊天老板键（前端展示用）。
+#[cfg(desktop)]
+#[tauri::command]
+fn chat_get_boss_key() -> String {
+    chat_boss_accel()
+}
+
+/// 改聊天老板键：校验→（若正占用）注销旧键→存盘→（若正占用）占用新键。
+/// 命令在独立线程执行，同步 register/unregister 不会与主线程 handler 自锁。
+#[cfg(desktop)]
+#[tauri::command]
+fn chat_set_boss_key(app: tauri::AppHandle, accel: String) -> Result<(), String> {
+    use std::str::FromStr;
+    use std::sync::atomic::Ordering;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    let accel = accel.trim().to_string();
+    let new_sc = Shortcut::from_str(&accel).map_err(|e| format!("无效的快捷键：{e}"))?;
+    let on = CHAT_BOSS_ON.load(Ordering::Relaxed);
+    let gs = app.global_shortcut();
+    if on {
+        let _ = gs.unregister(chat_boss_shortcut()); // 注销旧键
+    }
+    if let Ok(mut slot) = CHAT_BOSS_KEY.lock() {
+        *slot = accel;
+    }
+    save_chat_prefs(&app);
+    if on {
+        let _ = gs.register(new_sc); // 占用新键
+    }
+    Ok(())
+}
+
+/// 聊天老板键：按一下把所有聊天窗藏起，再按一下全部恢复并聚焦。
+#[cfg(desktop)]
+fn toggle_chat_windows(app: &tauri::AppHandle) {
+    let wins: Vec<_> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(l, _)| is_chat_label(l))
+        .map(|(_, w)| w)
+        .collect();
+    if wins.is_empty() {
+        return;
+    }
+    let any_visible = wins.iter().any(|w| w.is_visible().unwrap_or(false));
+    for w in &wins {
+        if any_visible {
+            let _ = w.hide();
+        } else {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }
+}
+
+/// 占用/归还聊天老板键。注意：从快捷键/窗口事件回调里同步注册会与主线程自锁，
+/// 那些地方用 set_chat_boss_async。
+#[cfg(desktop)]
+fn set_chat_boss(app: &tauri::AppHandle, on: bool) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let gs = app.global_shortcut();
+    let sc = chat_boss_shortcut();
+    let _ = if on { gs.register(sc) } else { gs.unregister(sc) };
+}
+
+#[cfg(desktop)]
+fn set_chat_boss_async(app: &tauri::AppHandle, on: bool) {
+    let app = app.clone();
+    std::thread::spawn(move || set_chat_boss(&app, on));
+}
+
+/// 把窗口从 Alt+Tab 切换器与任务栏里隐去（加 WS_EX_TOOLWINDOW、去 WS_EX_APPWINDOW）。
+/// 用于看球直开窗：藏起来后别再从 Alt+Tab 露馅。代价是任务栏也没有按钮（靠托盘/老板键唤回）。
+#[cfg(windows)]
+fn hide_from_alt_tab(window: &tauri::WebviewWindow) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    };
+    if let Ok(hwnd) = window.hwnd() {
+        unsafe {
+            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let new = (ex | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+        }
+    }
 }
 
 /// 给所有直开窗（web-d*）静音/取消静音——调 WebView2 原生 IsMuted（第一方页面 JS 够不着）。
@@ -576,7 +738,11 @@ fn open_direct_window(app: &tauri::AppHandle, url: String) -> Result<(), String>
     if let Some((x, y, w, h)) = load_direct_geom(app) {
         builder = builder.inner_size(w, h).position(x, y);
     }
-    builder.build().map_err(|e| e.to_string())?;
+    let win = builder.build().map_err(|e| e.to_string())?;
+    // 从 Alt+Tab / 任务栏隐去（藏起后不从切换器露馅；唤回靠托盘/老板键）
+    #[cfg(windows)]
+    hide_from_alt_tab(&win);
+    let _ = &win;
     if let Some(p) = last_url_path(app) {
         if let Some(dir) = p.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -710,6 +876,10 @@ pub fn run() {
             #[cfg(desktop)]
             load_web_prefs(app.handle());
 
+            // 聊天老板键自定义键跨重启记忆
+            #[cfg(desktop)]
+            load_chat_prefs(app.handle());
+
             // 看球小窗全局快捷键。动作→键的映射是可配置的（KEY_ACTIONS 默认值 + 用户在弹窗里改，
             // 存 prefs；启动时 load_web_prefs→rebuild_web_keys 填 WEB_KEYS）。这里只按「按下的键
             // 属于哪个动作」分发；注册/注销见 set_web_hotkeys（只在看球窗可见时占用、藏起/全关归还）。
@@ -722,6 +892,13 @@ pub fn run() {
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, shortcut, event| {
+                            // 聊天老板键：先于看球键判定（按一下藏所有聊天窗，再按恢复）
+                            if *shortcut == chat_boss_shortcut() {
+                                if event.state() == ShortcutState::Pressed {
+                                    toggle_chat_windows(app);
+                                }
+                                return;
+                            }
                             // 按下的键属于哪个看球动作？（动态查 WEB_KEYS）
                             let action = WEB_KEYS.lock().ok().and_then(|keys| {
                                 keys.iter()
@@ -937,6 +1114,27 @@ pub fn run() {
                 }
             }
 
+            // 聊天老板键生命周期：任一聊天窗有动静即占用 Alt+\\；最后一个聊天窗关掉即归还。
+            #[cfg(desktop)]
+            if is_chat_label(window.label()) {
+                use std::sync::atomic::Ordering;
+                if matches!(event, tauri::WindowEvent::Destroyed) {
+                    let gone = window.label().to_string();
+                    let left = window
+                        .app_handle()
+                        .webview_windows()
+                        .into_iter()
+                        .filter(|(l, _)| is_chat_label(l) && *l != gone)
+                        .count();
+                    if left == 0 {
+                        set_chat_boss_async(window.app_handle(), false);
+                        CHAT_BOSS_ON.store(false, Ordering::Relaxed);
+                    }
+                } else if !CHAT_BOSS_ON.swap(true, Ordering::Relaxed) {
+                    set_chat_boss_async(window.app_handle(), true);
+                }
+            }
+
             // 直开窗：记几何（下次开在原地）+ 获焦时套用当前透明度（继承、不用每次重调）
             if window.label().starts_with("web-d") {
                 match event {
@@ -1086,7 +1284,10 @@ pub fn run() {
             web_set_search_engine,
             web_get_keys,
             web_set_key,
-            web_reset_keys
+            web_reset_keys,
+            // 聊天老板键（Alt+C 默认，可改键）
+            chat_get_boss_key,
+            chat_set_boss_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "chat-window",
+  "description": "聊天窗（chat 启动器 + chat-* 房间窗）：可缩放，能开兄弟窗口、关闭、聚焦、置顶",
+  "windows": ["chat", "chat-*"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-close",
+    "core:window:allow-set-title",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top"
+  ]
+}
