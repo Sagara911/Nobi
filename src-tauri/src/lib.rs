@@ -470,9 +470,11 @@ fn flash_taskbar(app: &tauri::AppHandle, label: &str) {
     use windows::Win32::UI::WindowsAndMessaging::{
         FlashWindowEx, FLASHWINFO, FLASHW_ALL, FLASHW_TIMERNOFG,
     };
-    let win = app
-        .get_webview_window(label)
-        .or_else(|| app.get_webview_window("main"));
+    // 群窗存在且可见才闪它；关了/藏起(没可见任务栏按钮)就闪主窗
+    let win = match app.get_webview_window(label) {
+        Some(w) if w.is_visible().unwrap_or(false) => Some(w),
+        _ => app.get_webview_window("main"),
+    };
     if let Some(w) = win {
         if let Ok(hwnd) = w.hwnd() {
             let mut fi = FLASHWINFO {
