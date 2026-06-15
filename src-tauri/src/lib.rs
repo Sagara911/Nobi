@@ -489,7 +489,40 @@ fn flash_taskbar(app: &tauri::AppHandle, label: &str) {
     }
 }
 
-/// 收到一条未读（主窗后台订阅调用）：未读 +1、亮托盘红点、闪任务栏按钮(label 群窗优先)。
+/// 一个红点小图标（任务栏角标用）。
+#[cfg(windows)]
+fn red_dot_image() -> tauri::image::Image<'static> {
+    let s: u32 = 32;
+    let mut rgba = vec![0u8; (s * s * 4) as usize];
+    let cx = s as i32 / 2;
+    let cy = s as i32 / 2;
+    let r = s as i32 / 2 - 1;
+    for y in 0..s as i32 {
+        for x in 0..s as i32 {
+            let dx = x - cx;
+            let dy = y - cy;
+            if dx * dx + dy * dy <= r * r {
+                let i = ((y as u32 * s + x as u32) * 4) as usize;
+                rgba[i] = 235;
+                rgba[i + 1] = 64;
+                rgba[i + 2] = 52;
+                rgba[i + 3] = 255;
+            }
+        }
+    }
+    tauri::image::Image::new_owned(rgba, s, s)
+}
+
+/// 任务栏图标右下角红角标（常驻直到已读）：on=亮起，off=清除。设在主窗（底部栏那个）。
+#[cfg(windows)]
+fn set_main_overlay(app: &tauri::AppHandle, on: bool) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_overlay_icon(if on { Some(red_dot_image()) } else { None });
+    }
+}
+
+/// 收到一条未读（主窗后台订阅调用）：未读 +1、托盘红点、任务栏红角标 + 闪烁(label 群窗优先)。
 #[cfg(desktop)]
 #[tauri::command]
 fn chat_bump_unread(app: tauri::AppHandle, label: Option<String>) {
@@ -497,16 +530,21 @@ fn chat_bump_unread(app: tauri::AppHandle, label: Option<String>) {
     CHAT_UNREAD.fetch_add(1, Ordering::Relaxed);
     update_tray_unread(&app);
     #[cfg(windows)]
-    flash_taskbar(&app, label.as_deref().unwrap_or("main"));
+    {
+        set_main_overlay(&app, true);
+        flash_taskbar(&app, label.as_deref().unwrap_or("main"));
+    }
 }
 
-/// 清零未读（打开/聚焦聊天窗时调用）：托盘恢复正常图标。
+/// 清零未读（打开/聚焦聊天窗时调用）：托盘恢复正常图标、清掉任务栏红角标。
 #[cfg(desktop)]
 #[tauri::command]
 fn chat_clear_unread(app: tauri::AppHandle) {
     use std::sync::atomic::Ordering;
     CHAT_UNREAD.store(0, Ordering::Relaxed);
     update_tray_unread(&app);
+    #[cfg(windows)]
+    set_main_overlay(&app, false);
 }
 
 /// 把窗口从 Alt+Tab 切换器与任务栏里隐去（加 WS_EX_TOOLWINDOW、去 WS_EX_APPWINDOW）。
