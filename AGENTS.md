@@ -52,7 +52,7 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **v0.2.2 新增**：@提及(输入 `@` 弹候选=聊过天的人+所有人，`renderBody` 高亮，@到自己整条 `at-me` 高亮)；任务栏闪烁提醒(`flash_taskbar` FlashWindowEx，`chat_bump_unread(label)` 闪对应群窗/没开闪主窗)；Ctrl+V 粘贴图片/视频直接发；取消隐藏后滚轮失效 → `.chat-list` 手动接管 wheel；透明度 Alt+V/B **长按连调**(`CHAT_HOLD`/`CHAT_HOLD_GEN` 重复线程，同看球)
 - **画板导出 PNG 修复**(`src/board/BoardCanvas.tsx`)：①原浏览器 `<a download>` 兜底在 WebView2 会存出假 png(488B HTML)，改为原生 saveDialog→saveFile→`revealItemInDir` 打开文件夹，仅纯浏览器预览才用 `<a download>`；②离屏 Konva Stage 不能放 `display:none` 容器(渲染空画布→toDataURL 空)，改屏外定位 `left:-100000px`
 - **v0.2.3–0.2.7 通知/@ 完善**：
-  - 任务栏**红角标**(`set_main_overlay` 用 Tauri `set_overlay_icon(Image)` 在主窗任务栏按钮叠红点，`red_dot_image()` 生成)——比托盘红点(在 `^` 折叠里)、一闪而过的闪烁更显眼，常驻直到 `chat_clear_unread`
+  - 任务栏**红角标**(`set_main_overlay`/`set_overlay_icon`)曾在 v0.2.4 加过，**v0.2.8 按用户要求移除**——任务栏未读只保留 `flash_taskbar` 闪烁；常驻红点提示只剩**系统托盘图标**那个(`badged_tray_icon`，主窗收进托盘时的兜底)
   - **未读判定改用窗口可见性**：主窗后台订阅收到消息时直接查该群窗 `isFocused()+isVisible()`(需 `default.json` 的 `is-focused`/`is-visible` 权限)，只有"打开+聚焦+可见"才不提醒——关窗/隐藏(boss键)/在后台都正常提醒。**废弃了原先靠 activeConn 标记判断的做法**(关窗时标记残留→误判"还在看"→提醒全哑)
   - `flash_taskbar`：群窗可见才闪它，否则(关/藏)闪主窗
   - **@候选按 clientId 去重**取每人最新名字(改过名只显示当前名、人数准；旧消息保留旧名不动)
