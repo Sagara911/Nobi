@@ -131,7 +131,13 @@ fn chat_prefs_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 
 #[cfg(desktop)]
 fn save_chat_prefs(app: &tauri::AppHandle) {
-    let prefs = serde_json::json!({ "bossKey": chat_boss_accel() });
+    use std::sync::atomic::Ordering;
+    let prefs = serde_json::json!({
+        "bossKey": chat_boss_accel(),
+        "opacity": CHAT_OPACITY.load(Ordering::Relaxed),
+        "opacityDownKey": chat_opacity_down_accel(),
+        "opacityUpKey": chat_opacity_up_accel(),
+    });
     if let Some(p) = chat_prefs_path(app) {
         if let Some(dir) = p.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -148,6 +154,19 @@ fn load_chat_prefs(app: &tauri::AppHandle) {
                 if let Some(k) = v.get("bossKey").and_then(|x| x.as_str()) {
                     if let Ok(mut slot) = CHAT_BOSS_KEY.lock() {
                         *slot = k.to_string();
+                    }
+                }
+                if let Some(o) = v.get("opacity").and_then(|x| x.as_u64()) {
+                    CHAT_OPACITY.store(o.clamp(80, 255) as u8, std::sync::atomic::Ordering::Relaxed);
+                }
+                if let Some(k) = v.get("opacityDownKey").and_then(|x| x.as_str()) {
+                    if let Ok(mut s) = CHAT_OPACITY_DOWN_KEY.lock() {
+                        *s = k.to_string();
+                    }
+                }
+                if let Some(k) = v.get("opacityUpKey").and_then(|x| x.as_str()) {
+                    if let Ok(mut s) = CHAT_OPACITY_UP_KEY.lock() {
+                        *s = k.to_string();
                     }
                 }
             }
@@ -174,16 +193,24 @@ fn chat_set_boss_key(app: tauri::AppHandle, accel: String) -> Result<(), String>
     let new_sc = Shortcut::from_str(&accel).map_err(|e| format!("无效的快捷键：{e}"))?;
     let on = CHAT_BOSS_ON.load(Ordering::Relaxed);
     let gs = app.global_shortcut();
+    let old_sc = chat_boss_shortcut();
     if on {
-        let _ = gs.unregister(chat_boss_shortcut()); // 注销旧键
+        let _ = gs.unregister(old_sc); // 先放开旧键
+    }
+    // 试注册新键——验证有没有被别的软件全局占用（占用时 register 报错）
+    if let Err(e) = gs.register(new_sc) {
+        if on {
+            let _ = gs.register(old_sc); // 失败则恢复旧键
+        }
+        return Err(format!("该快捷键可能被其它软件占用，换一个试试（{e}）"));
+    }
+    if !on {
+        let _ = gs.unregister(new_sc); // 当前没有聊天窗，先放开，开窗时再占
     }
     if let Ok(mut slot) = CHAT_BOSS_KEY.lock() {
         *slot = accel;
     }
     save_chat_prefs(&app);
-    if on {
-        let _ = gs.register(new_sc); // 占用新键
-    }
     Ok(())
 }
 
@@ -224,6 +251,228 @@ fn set_chat_boss(app: &tauri::AppHandle, on: bool) {
 fn set_chat_boss_async(app: &tauri::AppHandle, on: bool) {
     let app = app.clone();
     std::thread::spawn(move || set_chat_boss(&app, on));
+}
+
+// ===== 聊天窗透明度（Alt+V 调淡 / Alt+B 调浓）=====
+// 本机 WebView2 只能走 Win32 原生 alpha（同看球）。键随聊天窗生命周期占用/归还。
+
+#[cfg(desktop)]
+static CHAT_OPACITY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(255);
+
+#[cfg(desktop)]
+const CHAT_OPACITY_DOWN_ACCEL: &str = "Alt+KeyV";
+#[cfg(desktop)]
+const CHAT_OPACITY_UP_ACCEL: &str = "Alt+KeyB";
+// 用户自定义（空=用默认）。存 chat_prefs.json。
+#[cfg(desktop)]
+static CHAT_OPACITY_DOWN_KEY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+#[cfg(desktop)]
+static CHAT_OPACITY_UP_KEY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+#[cfg(desktop)]
+fn chat_opacity_down_accel() -> String {
+    let v = CHAT_OPACITY_DOWN_KEY.lock().map(|s| s.clone()).unwrap_or_default();
+    if v.trim().is_empty() { CHAT_OPACITY_DOWN_ACCEL.to_string() } else { v }
+}
+#[cfg(desktop)]
+fn chat_opacity_up_accel() -> String {
+    let v = CHAT_OPACITY_UP_KEY.lock().map(|s| s.clone()).unwrap_or_default();
+    if v.trim().is_empty() { CHAT_OPACITY_UP_ACCEL.to_string() } else { v }
+}
+
+#[cfg(desktop)]
+fn chat_opacity_down_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+    Shortcut::from_str(&chat_opacity_down_accel())
+        .or_else(|_| Shortcut::from_str(CHAT_OPACITY_DOWN_ACCEL))
+        .expect("默认合法")
+}
+#[cfg(desktop)]
+fn chat_opacity_up_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+    Shortcut::from_str(&chat_opacity_up_accel())
+        .or_else(|_| Shortcut::from_str(CHAT_OPACITY_UP_ACCEL))
+        .expect("默认合法")
+}
+
+#[cfg(desktop)]
+fn chat_opacity_shortcuts() -> (
+    tauri_plugin_global_shortcut::Shortcut,
+    tauri_plugin_global_shortcut::Shortcut,
+) {
+    (chat_opacity_down_shortcut(), chat_opacity_up_shortcut())
+}
+
+/// 读透明度两个键（前端展示）：返回 [调淡键, 调浓键]。
+#[cfg(desktop)]
+#[tauri::command]
+fn chat_get_opacity_keys() -> Vec<String> {
+    vec![chat_opacity_down_accel(), chat_opacity_up_accel()]
+}
+
+/// 改透明度键：which = "down" | "up"。带冲突检测（被占用则报错并恢复旧键）。
+#[cfg(desktop)]
+#[tauri::command]
+fn chat_set_opacity_key(app: tauri::AppHandle, which: String, accel: String) -> Result<(), String> {
+    use std::str::FromStr;
+    use std::sync::atomic::Ordering;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    let accel = accel.trim().to_string();
+    let new_sc = Shortcut::from_str(&accel).map_err(|e| format!("无效的快捷键：{e}"))?;
+    let is_down = which == "down";
+    let old_sc = if is_down { chat_opacity_down_shortcut() } else { chat_opacity_up_shortcut() };
+    let on = CHAT_BOSS_ON.load(Ordering::Relaxed); // 透明度键随聊天窗生命周期，与老板键同步
+    let gs = app.global_shortcut();
+    if on {
+        let _ = gs.unregister(old_sc);
+    }
+    if let Err(e) = gs.register(new_sc) {
+        if on {
+            let _ = gs.register(old_sc);
+        }
+        return Err(format!("该快捷键可能被其它软件占用，换一个试试（{e}）"));
+    }
+    if !on {
+        let _ = gs.unregister(new_sc);
+    }
+    let slot = if is_down { &CHAT_OPACITY_DOWN_KEY } else { &CHAT_OPACITY_UP_KEY };
+    if let Ok(mut s) = slot.lock() {
+        *s = accel;
+    }
+    save_chat_prefs(&app);
+    Ok(())
+}
+
+/// 给所有聊天窗设原生 alpha（SetLayeredWindowAttributes）。
+#[cfg(windows)]
+fn apply_chat_opacity(app: &tauri::AppHandle, level: u8) {
+    use windows::Win32::Foundation::COLORREF;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_ALPHA,
+        WS_EX_LAYERED,
+    };
+    for (label, w) in app.webview_windows() {
+        if !is_chat_label(&label) {
+            continue;
+        }
+        if let Ok(hwnd) = w.hwnd() {
+            unsafe {
+                let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_LAYERED.0 as isize);
+                let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), level, LWA_ALPHA);
+            }
+        }
+    }
+}
+
+/// Alt+V/Alt+B 步进透明度（步 ~10%，下限 80 别让窗彻底没影）。
+#[cfg(desktop)]
+fn chat_opacity_step(app: &tauri::AppHandle, down: bool) {
+    use std::sync::atomic::Ordering;
+    let cur = CHAT_OPACITY.load(Ordering::Relaxed);
+    let next = if down {
+        cur.saturating_sub(26).max(80)
+    } else {
+        cur.saturating_add(26)
+    };
+    CHAT_OPACITY.store(next, Ordering::Relaxed);
+    #[cfg(windows)]
+    apply_chat_opacity(app, next);
+    save_chat_prefs(app);
+}
+
+/// 占用/归还 Alt+V/Alt+B（随聊天窗生命周期，同老板键）。
+#[cfg(desktop)]
+fn set_chat_opacity_keys(app: &tauri::AppHandle, on: bool) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let gs = app.global_shortcut();
+    let (d, u) = chat_opacity_shortcuts();
+    if on {
+        let _ = gs.register(d);
+        let _ = gs.register(u);
+    } else {
+        let _ = gs.unregister(d);
+        let _ = gs.unregister(u);
+    }
+}
+
+#[cfg(desktop)]
+fn set_chat_opacity_keys_async(app: &tauri::AppHandle, on: bool) {
+    let app = app.clone();
+    std::thread::spawn(move || set_chat_opacity_keys(&app, on));
+}
+
+/// 未读消息数：主窗后台订阅在「用户没看那个群」时累加，打开/聚焦聊天窗清零。
+#[cfg(desktop)]
+static CHAT_UNREAD: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// 在默认窗口图标右下角叠一个红点，作为"有未读"的托盘图标。
+#[cfg(desktop)]
+fn badged_tray_icon(app: &tauri::AppHandle) -> Option<tauri::image::Image<'static>> {
+    use tauri::Manager;
+    let base = app.default_window_icon()?;
+    let w = base.width();
+    let h = base.height();
+    let mut rgba = base.rgba().to_vec();
+    let r = (w as f32 * 0.30) as i32;
+    let cx = w as i32 - r - 1;
+    let cy = h as i32 - r - 1;
+    for y in 0..h as i32 {
+        for x in 0..w as i32 {
+            let dx = x - cx;
+            let dy = y - cy;
+            if dx * dx + dy * dy <= r * r {
+                let idx = ((y as u32 * w + x as u32) * 4) as usize;
+                if idx + 3 < rgba.len() {
+                    rgba[idx] = 235;
+                    rgba[idx + 1] = 64;
+                    rgba[idx + 2] = 52;
+                    rgba[idx + 3] = 255;
+                }
+            }
+        }
+    }
+    Some(tauri::image::Image::new_owned(rgba, w, h))
+}
+
+/// 按当前未读数刷新托盘图标 + tooltip（红点变体 / 还原默认）。
+#[cfg(desktop)]
+fn update_tray_unread(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    use tauri::Manager;
+    let n = CHAT_UNREAD.load(Ordering::Relaxed);
+    let Some(tray) = app.tray_by_id("main") else {
+        return;
+    };
+    if n > 0 {
+        if let Some(icon) = badged_tray_icon(app) {
+            let _ = tray.set_icon(Some(icon));
+        }
+        let _ = tray.set_tooltip(Some(format!("Nobi · {n} 条新消息")));
+    } else {
+        let _ = tray.set_icon(app.default_window_icon().cloned());
+        let _ = tray.set_tooltip(Some("Nobi"));
+    }
+}
+
+/// 收到一条未读（主窗后台订阅调用）：未读 +1 并亮托盘红点。
+#[cfg(desktop)]
+#[tauri::command]
+fn chat_bump_unread(app: tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    CHAT_UNREAD.fetch_add(1, Ordering::Relaxed);
+    update_tray_unread(&app);
+}
+
+/// 清零未读（打开/聚焦聊天窗时调用）：托盘恢复正常图标。
+#[cfg(desktop)]
+#[tauri::command]
+fn chat_clear_unread(app: tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    CHAT_UNREAD.store(0, Ordering::Relaxed);
+    update_tray_unread(&app);
 }
 
 /// 把窗口从 Alt+Tab 切换器与任务栏里隐去（加 WS_EX_TOOLWINDOW、去 WS_EX_APPWINDOW）。
@@ -880,6 +1129,15 @@ pub fn run() {
             #[cfg(desktop)]
             load_chat_prefs(app.handle());
 
+            // 开机自启插件（Windows 走 HKCU Run 项，无需管理员）
+            #[cfg(desktop)]
+            {
+                let _ = app.handle().plugin(tauri_plugin_autostart::init(
+                    tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                    None,
+                ));
+            }
+
             // 看球小窗全局快捷键。动作→键的映射是可配置的（KEY_ACTIONS 默认值 + 用户在弹窗里改，
             // 存 prefs；启动时 load_web_prefs→rebuild_web_keys 填 WEB_KEYS）。这里只按「按下的键
             // 属于哪个动作」分发；注册/注销见 set_web_hotkeys（只在看球窗可见时占用、藏起/全关归还）。
@@ -892,6 +1150,16 @@ pub fn run() {
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, shortcut, event| {
+                            // 聊天窗透明度：Alt+V 调淡 / Alt+B 调浓
+                            {
+                                let (od, ou) = chat_opacity_shortcuts();
+                                if *shortcut == od || *shortcut == ou {
+                                    if event.state() == ShortcutState::Pressed {
+                                        chat_opacity_step(app, *shortcut == od);
+                                    }
+                                    return;
+                                }
+                            }
                             // 聊天老板键：先于看球键判定（按一下藏所有聊天窗，再按恢复）
                             if *shortcut == chat_boss_shortcut() {
                                 if event.state() == ShortcutState::Pressed {
@@ -1128,10 +1396,19 @@ pub fn run() {
                         .count();
                     if left == 0 {
                         set_chat_boss_async(window.app_handle(), false);
+                        set_chat_opacity_keys_async(window.app_handle(), false);
                         CHAT_BOSS_ON.store(false, Ordering::Relaxed);
                     }
-                } else if !CHAT_BOSS_ON.swap(true, Ordering::Relaxed) {
-                    set_chat_boss_async(window.app_handle(), true);
+                } else {
+                    if !CHAT_BOSS_ON.swap(true, Ordering::Relaxed) {
+                        set_chat_boss_async(window.app_handle(), true);
+                        set_chat_opacity_keys_async(window.app_handle(), true);
+                    }
+                    // 新窗/获焦继承当前透明度（仅调淡过才打 layered，避免初始化期白屏）
+                    #[cfg(windows)]
+                    if CHAT_OPACITY.load(Ordering::Relaxed) < 255 {
+                        apply_chat_opacity(window.app_handle(), CHAT_OPACITY.load(Ordering::Relaxed));
+                    }
                 }
             }
 
@@ -1287,7 +1564,11 @@ pub fn run() {
             web_reset_keys,
             // 聊天老板键（Alt+C 默认，可改键）
             chat_get_boss_key,
-            chat_set_boss_key
+            chat_set_boss_key,
+            chat_get_opacity_keys,
+            chat_set_opacity_key,
+            chat_bump_unread,
+            chat_clear_unread
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

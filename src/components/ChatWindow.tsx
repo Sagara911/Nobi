@@ -1,26 +1,46 @@
-// 聊天窗（main.tsx 按 #chat 路由渲染）。
-// 两种形态由 URL 的 ?room= 决定：
-//   · 无 room（#chat）        → 「发起/加入群」面板，每次「进入」开一个房间窗
-//   · 有 room（#chat?room=X） → 该房间的独立聊天窗，可多个并排
+// 聊天窗（main.tsx 按 #chat 路由渲染）。两种形态由 URL 参数决定：
+//   · 无 room        → 「发起/加入群」启动器（选/建连接档案 + 房间号）
+//   · profile + room → 该连接的独立聊天窗，可多个并排（不同档案=不同服务器同时开）
 // 只依赖 ChatBackend 抽象，不关心底层是 Supabase 还是自建服务器。
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import * as api from "../api";
 import {
   createBackend,
   drainOutbox,
-  loadConfig,
-  saveConfig,
   randomRoom,
-  setActiveRoom,
+  getProfiles,
+  getProfile,
+  saveProfile,
+  removeProfile,
+  isProfileReady,
+  resolveConfig,
+  getNickname,
+  setNickname,
+  getAvatar,
+  setAvatar,
+  AVATAR_CHOICES,
+  fileToAvatar,
+  isImageAvatar,
+  addJoinedConn,
+  getJoinedConns,
+  removeJoinedConn,
+  setActiveConn,
+  clearActiveConn,
+  getStickers,
+  removeSticker,
+  type Sticker,
+  type JoinedConn,
   CHAT_OUTBOX_KEY,
-  CREDENTIALS_BAKED,
+  BAKED_PROFILE_ID,
   PROVIDER_LABELS,
+  SUPABASE_SETUP_SQL,
   type ChatBackend,
   type ChatConfig,
   type ChatMessage,
+  type ChatProfile,
   type ChatProvider,
   type ConnStatus,
 } from "../chat";
@@ -28,34 +48,32 @@ import "./ChatWindow.css";
 
 const LAUNCHER_LABEL = "chat";
 
-/** 从 URL hash 取房间号（无则为空 = 启动器形态） */
-function roomFromUrl(): string {
-  const q = location.hash.split("?")[1] || "";
-  return new URLSearchParams(q).get("room") || "";
+function urlParams(): URLSearchParams {
+  return new URLSearchParams(location.hash.split("?")[1] || "");
 }
 
-function roomWindowLabel(room: string): string {
-  return `chat-${room.replace(/[^\w-]/g, "_")}`;
+function roomWindowLabel(profileId: string, room: string): string {
+  return `chat-${`${profileId}-${room}`.replace(/[^\w-]/g, "_")}`;
 }
 
-/** 打开（或聚焦）某房间的独立窗口 */
-async function openRoomWindow(room: string) {
-  const label = roomWindowLabel(room);
+/** 打开（或聚焦）某连接（档案+房间）的独立窗口 */
+async function openConnWindow(profileId: string, room: string) {
+  const label = roomWindowLabel(profileId, room);
   const existing = await WebviewWindow.getByLabel(label).catch(() => null);
   if (existing) {
     await existing.setFocus().catch(() => {});
     return;
   }
+  const url = `index.html#chat?profile=${encodeURIComponent(profileId)}&room=${encodeURIComponent(room)}`;
   const win = new WebviewWindow(label, {
-    url: `index.html#chat?room=${encodeURIComponent(room)}`,
+    url,
     title: `Nobi 聊天 · ${room}`,
     width: 380,
     height: 560,
     minWidth: 300,
     minHeight: 360,
     resizable: true,
-    // 关掉 Tauri 原生拖放拦截，让窗口能用 HTML5 拖放收桌面拖进来的图片
-    dragDropEnabled: false,
+    dragDropEnabled: false, // 走 HTML5 拖放收桌面图片
   });
   win.once("tauri://error", () => {});
 }
@@ -70,13 +88,12 @@ async function openLauncherWindow() {
   new WebviewWindow(LAUNCHER_LABEL, {
     url: "index.html#chat",
     title: "Nobi 聊天",
-    width: 340,
-    height: 420,
+    width: 360,
+    height: 520,
     resizable: true,
   });
 }
 
-/** 本地文件路径 → webview 可 fetch 的 URL（无 Tauri 时原样返回，预览不崩） */
 function toFetchUrl(path: string): string {
   try {
     return convertFileSrc(path);
@@ -102,6 +119,32 @@ function fmtAccel(a: string): string {
     .join(" + ");
 }
 
+// 常用 emoji（点一下插进输入框）
+const EMOJIS = [
+  "😀","😄","😁","😂","🤣","😊","😍","😘","😎","🤔",
+  "😅","😭","😡","🥺","😴","🤩","😏","😤","🥳","😇",
+  "👍","👎","🙏","👏","💪","👌","🤙","🙌","👀","🤝",
+  "❤️","🔥","✨","💯","🎉","🌹","☕","🍻","🐶","🐱",
+];
+
+function hashHue(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+
+/** 头像：图片(data/http)显图，emoji 显 emoji，否则名字首字 + 确定性配色（默认） */
+function MsgAvatar({ name, avatar }: { name: string; avatar?: string }) {
+  if (isImageAvatar(avatar)) return <img className="chat-ava chat-ava-img" src={avatar} alt="" />;
+  if (avatar) return <div className="chat-ava chat-ava-emoji">{avatar}</div>;
+  const ch = (name || "?").trim().charAt(0).toUpperCase() || "?";
+  return (
+    <div className="chat-ava" style={{ background: `hsl(${hashHue(name)} 52% 45%)` }}>
+      {ch}
+    </div>
+  );
+}
+
 const STATUS_TEXT: Record<ConnStatus, string> = {
   idle: "未连接",
   connecting: "连接中…",
@@ -111,15 +154,20 @@ const STATUS_TEXT: Record<ConnStatus, string> = {
 };
 
 export default function ChatWindow() {
-  const room = roomFromUrl();
-  return room ? <ChatRoom room={room} /> : <ChatLauncher />;
+  const params = urlParams();
+  const room = params.get("room") || "";
+  const profileId = params.get("profile") || "";
+  return room && profileId ? <ChatRoom profileId={profileId} room={room} /> : <ChatLauncher />;
 }
 
 // ===== 房间聊天窗 =====
 
-function ChatRoom({ room }: { room: string }) {
-  // room 固定（窗口级），配置取一次即可：全局昵称/凭据 + 本窗房间号
-  const [cfg] = useState<ChatConfig>(() => ({ ...loadConfig(), room }));
+function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
+  const profile = useMemo(() => getProfile(profileId), [profileId]);
+  const [cfg] = useState<ChatConfig | null>(() =>
+    profile ? resolveConfig(profile, room) : null,
+  );
+
   const [status, setStatus] = useState<ConnStatus>("idle");
   const [statusDetail, setStatusDetail] = useState<string>("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -127,6 +175,8 @@ function ChatRoom({ room }: { room: string }) {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [panel, setPanel] = useState<null | "emoji" | "sticker">(null);
+  const [stickers, setStickers] = useState<Sticker[]>(() => getStickers());
 
   const backendRef = useRef<ChatBackend | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
@@ -138,30 +188,40 @@ function ChatRoom({ room }: { room: string }) {
     setMessages((prev) => [...prev, m]);
   }, []);
 
-  // 标记本房间为"当前活跃群"（右键发素材发往这里）：打开时 + 获焦时
+  // 活跃连接标记 + 未读清零：聚焦=正在看→记活跃+清红点；失焦/关窗=没在看→主窗能为它弹提醒
   useEffect(() => {
-    setActiveRoom(room);
-    const onFocus = () => setActiveRoom(room);
+    setActiveConn(profileId, room);
+    void api.chatClearUnread();
+    const onFocus = () => {
+      setActiveConn(profileId, room);
+      void api.chatClearUnread();
+    };
+    const onBlur = () => clearActiveConn();
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [room]);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+      clearActiveConn();
+    };
+  }, [profileId, room]);
 
-  // 发送 outbox 里发往本房间的素材
   const flushOutbox = useCallback(async () => {
     const backend = backendRef.current;
     if (!backend || status !== "connected") return;
-    const items = drainOutbox(room);
+    const items = drainOutbox(profileId, room);
     for (const it of items) {
       try {
-        await backend.sendAsset({ url: toFetchUrl(it.path), name: it.name });
+        await backend.sendAsset({ url: toFetchUrl(it.path), name: it.name, kind: it.kind });
       } catch (e) {
         setNotice(`发送「${it.name}」失败：${String(e)}`);
       }
     }
-  }, [status, room]);
+  }, [status, profileId, room]);
 
   // 建立连接
   useEffect(() => {
+    if (!cfg) return;
     let disposed = false;
     const backend = createBackend(cfg);
     backendRef.current = backend;
@@ -215,11 +275,19 @@ function ChatRoom({ room }: { room: string }) {
     };
   }, [status, flushOutbox]);
 
-  // 新消息滚到底
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  if (!cfg) {
+    return (
+      <div className="chat-setup">
+        <h3>连接不存在</h3>
+        <p className="chat-hint">这个连接可能已被删除。请关掉本窗，从聊天启动器重新进入。</p>
+      </div>
+    );
+  }
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -236,7 +304,6 @@ function ChatRoom({ room }: { room: string }) {
     }
   };
 
-  // 桌面拖图进来直接发（窗口 dragDropEnabled:false，走 HTML5 拖放）
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
@@ -245,19 +312,38 @@ function ChatRoom({ room }: { room: string }) {
       setNotice("还没连上，先连接再拖图");
       return;
     }
-    const files = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith("image/"),
+    const files = Array.from(e.dataTransfer.files).filter(
+      (f) => f.type.startsWith("image/") || f.type.startsWith("video/"),
     );
     if (!files.length) {
-      setNotice("只支持拖入图片文件");
+      setNotice("只支持拖入图片或视频文件");
       return;
     }
     for (const f of files) {
       try {
-        await backend.sendAsset({ name: f.name, blob: f });
+        await backend.sendAsset({
+          name: f.name,
+          blob: f,
+          kind: f.type.startsWith("video/") ? "video" : "image",
+        });
       } catch (err) {
         setNotice(`发送「${f.name}」失败：${String(err)}`);
       }
+    }
+  };
+
+  // 发一张收藏的表情包（本地图片，re-upload）
+  const sendSticker = async (s: Sticker) => {
+    const backend = backendRef.current;
+    if (!backend || status !== "connected") {
+      setNotice("还没连上");
+      return;
+    }
+    setPanel(null);
+    try {
+      await backend.sendAsset({ url: toFetchUrl(s.path), name: s.name, kind: "image" });
+    } catch (e) {
+      setNotice(`发送失败：${String(e)}`);
     }
   };
 
@@ -298,22 +384,72 @@ function ChatRoom({ room }: { room: string }) {
           const mine = m.clientId === cfg.clientId;
           return (
             <div key={m.id} className={`chat-row ${mine ? "mine" : "theirs"}`}>
-              {!mine && <div className="chat-sender">{m.sender}</div>}
-              <div className="chat-bubble">
-                {m.kind === "image" && m.assetUrl ? (
-                  <a href={m.assetUrl} target="_blank" rel="noreferrer">
-                    <img className="chat-img" src={m.assetUrl} alt={m.assetName || "图片"} />
-                  </a>
-                ) : null}
-                {m.body ? <div className="chat-text">{m.body}</div> : null}
+              <MsgAvatar name={m.sender} avatar={m.avatar} />
+              <div className="chat-col">
+                {!mine && <div className="chat-sender">{m.sender}</div>}
+                <div className="chat-bubble">
+                  {m.kind === "image" && m.assetUrl ? (
+                    <a href={m.assetUrl} target="_blank" rel="noreferrer">
+                      <img className="chat-img" src={m.assetUrl} alt={m.assetName || "图片"} />
+                    </a>
+                  ) : null}
+                  {m.kind === "video" && m.assetUrl ? (
+                    <video className="chat-video" src={m.assetUrl} controls preload="metadata" />
+                  ) : null}
+                  {m.body ? <div className="chat-text">{m.body}</div> : null}
+                </div>
+                <div className="chat-time">{new Date(m.createdAt).toLocaleTimeString().slice(0, 5)}</div>
               </div>
-              <div className="chat-time">{new Date(m.createdAt).toLocaleTimeString().slice(0, 5)}</div>
             </div>
           );
         })}
       </div>
 
+      {panel && (
+        <div className="chat-panel">
+          <div className="chat-panel-tabs">
+            <button className={panel === "emoji" ? "on" : ""} onClick={() => setPanel("emoji")}>Emoji</button>
+            <button className={panel === "sticker" ? "on" : ""} onClick={() => setPanel("sticker")}>表情包</button>
+          </div>
+          {panel === "emoji" ? (
+            <div className="chat-emoji-grid">
+              {EMOJIS.map((e) => (
+                <button key={e} type="button" onClick={() => setDraft((d) => d + e)}>{e}</button>
+              ))}
+            </div>
+          ) : (
+            <div className="chat-sticker-grid">
+              {stickers.length === 0 && (
+                <div className="chat-empty-sm">还没有收藏的表情包。在素材库右键图片「收藏为表情包」。</div>
+              )}
+              {stickers.map((s) => (
+                <div className="chat-sticker" key={s.path}>
+                  <img src={toFetchUrl(s.path)} alt={s.name} title={s.name} onClick={() => void sendSticker(s)} />
+                  <button
+                    className="chat-sticker-x"
+                    title="移除"
+                    onClick={() => {
+                      removeSticker(s.path);
+                      setStickers(getStickers());
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <footer className="chat-input">
+        <button
+          className="chat-emoji-btn"
+          title="表情 / 表情包"
+          onClick={() => setPanel((p) => (p ? null : "emoji"))}
+        >
+          😀
+        </button>
         <textarea
           value={draft}
           placeholder={`以 ${cfg.nickname || "我"} 的身份发消息…`}
@@ -336,63 +472,377 @@ function ChatRoom({ room }: { room: string }) {
 
 // ===== 发起/加入群 启动器 =====
 
-function ChatLauncher() {
-  const [cfg, setCfg] = useState<ChatConfig>(() => loadConfig());
-  const [room, setRoom] = useState<string>(cfg.room || "");
-  const set = (patch: Partial<ChatConfig>) => setCfg((p) => ({ ...p, ...patch }));
+const EMPTY_DRAFT: Omit<ChatProfile, "id"> = {
+  label: "",
+  provider: "supabase",
+  supabaseUrl: "",
+  supabaseAnonKey: "",
+  serverUrl: "",
+  serverToken: "",
+};
 
-  // 老板键（可自定义）：读当前键 + 录新键
+function ChatLauncher() {
+  const [nickname, setNick] = useState<string>(() => getNickname());
+  const [avatar, setAva] = useState<string>(() => getAvatar());
+  const [conns, setConns] = useState<JoinedConn[]>(() => getJoinedConns());
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // 点已记住的房间直接进（昵称/头像/连接都已持久化，无需重填），并关掉启动器
+  const goRoom = (profileId: string, room: string) => {
+    void openConnWindow(profileId, room).then(() => {
+      getCurrentWebviewWindow().close().catch(() => {});
+    });
+  };
+  const leaveRoom = (profileId: string, room: string) => {
+    removeJoinedConn(profileId, room);
+    setConns(getJoinedConns());
+  };
+  const pickAvatar = (a: string) => {
+    setAva(a);
+    setAvatar(a); // 立即持久化，下次开房间窗就带上
+  };
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // 允许重选同一文件
+    if (!f) return;
+    try {
+      pickAvatar(await fileToAvatar(f));
+    } catch {
+      /* ignore */
+    }
+  };
+  const [profiles, setProfiles] = useState<ChatProfile[]>(() => getProfiles());
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    const ps = getProfiles();
+    return ps.length ? ps[0].id : "new";
+  });
+  const [draft, setDraft] = useState<Omit<ChatProfile, "id">>(EMPTY_DRAFT);
+  const [room, setRoom] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [copied, setCopied] = useState("");
+
+  // 快捷键（老板键 + 透明度调淡/调浓，均可改）
   const [bossKey, setBossKey] = useState<string>("Alt+KeyC");
-  const [recording, setRecording] = useState(false);
+  const [opDown, setOpDown] = useState<string>("Alt+KeyV");
+  const [opUp, setOpUp] = useState<string>("Alt+KeyB");
+  const [recording, setRecording] = useState<null | "boss" | "opDown" | "opUp">(null);
+  const [keyErr, setKeyErr] = useState("");
+  const [sqlCopied, setSqlCopied] = useState(false);
+
   useEffect(() => {
     api.chatGetBossKey().then(setBossKey).catch(() => {});
+    api
+      .chatGetOpacityKeys()
+      .then((ks) => {
+        if (ks[0]) setOpDown(ks[0]);
+        if (ks[1]) setOpUp(ks[1]);
+      })
+      .catch(() => {});
   }, []);
   useEffect(() => {
     if (!recording) return;
+    const target = recording;
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       if (e.key === "Escape") {
-        setRecording(false);
+        setRecording(null);
         return;
       }
-      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return; // 等真正主键
+      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
       const mods: string[] = [];
       if (e.ctrlKey) mods.push("Control");
       if (e.altKey) mods.push("Alt");
       if (e.shiftKey) mods.push("Shift");
       if (e.metaKey) mods.push("Super");
       const accel = [...mods, e.code].join("+");
-      setRecording(false);
-      api.chatSetBossKey(accel).then(() => setBossKey(accel)).catch(() => {});
+      setRecording(null);
+      setKeyErr("");
+      const done =
+        target === "boss"
+          ? api.chatSetBossKey(accel).then(() => setBossKey(accel))
+          : target === "opDown"
+          ? api.chatSetOpacityKey("down", accel).then(() => setOpDown(accel))
+          : api.chatSetOpacityKey("up", accel).then(() => setOpUp(accel));
+      done.catch((err) => setKeyErr(String(err)));
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [recording]);
 
-  const credsReady =
-    CREDENTIALS_BAKED ||
-    (cfg.provider === "supabase"
-      ? !!(cfg.supabaseUrl?.trim() && cfg.supabaseAnonKey?.trim())
-      : cfg.provider === "custom"
-      ? !!cfg.serverUrl?.trim()
-      : false);
-  const ready = !!cfg.nickname.trim() && !!room.trim() && credsReady;
+  const keyRow = (label: string, target: "boss" | "opDown" | "opUp", accel: string) => (
+    <label className="chat-field">
+      <span>{label}</span>
+      <div className="chat-room-row">
+        <input readOnly value={recording === target ? "按新组合…（Esc 取消）" : fmtAccel(accel)} />
+        <button type="button" onClick={() => { setKeyErr(""); setRecording(target); }}>改键</button>
+      </div>
+    </label>
+  );
+
+  const isNew = selectedId === "new";
+  const selected = isNew ? null : profiles.find((p) => p.id === selectedId) || null;
+  const draftReady = isProfileReady({ ...draft, id: "draft" });
+  const ready =
+    !!nickname.trim() &&
+    !!room.trim() &&
+    (isNew ? draftReady : !!selected && isProfileReady(selected));
+
+  const flash = (msg: string) => {
+    setCopied(msg);
+    window.setTimeout(() => setCopied(""), 1600);
+  };
+  const copy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => flash(`已复制${label}`)).catch(() => {});
+  };
+  const copySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SETUP_SQL).then(() => setSqlCopied(true)).catch(() => {});
+    window.setTimeout(() => setSqlCopied(false), 1800);
+  };
+
+  const refreshProfiles = (selId?: string) => {
+    const ps = getProfiles();
+    setProfiles(ps);
+    if (selId) setSelectedId(selId);
+    else if (!ps.some((p) => p.id === selectedId)) setSelectedId(ps.length ? ps[0].id : "new");
+  };
 
   const enter = () => {
     if (!ready) return;
-    saveConfig({ ...cfg, room: room.trim() });
-    void openRoomWindow(room.trim());
+    setNickname(nickname.trim());
+    let pid = selectedId;
+    if (isNew) {
+      pid = saveProfile({
+        ...draft,
+        label: draft.label.trim() || (draft.provider === "custom" ? "自建服务器" : "Supabase"),
+      });
+      refreshProfiles(pid);
+    }
+    addJoinedConn(pid, room.trim());
+    // 开房间窗后关掉启动器（要再开别的群，房间窗右上角「＋」可唤回）
+    void openConnWindow(pid, room.trim()).then(() => {
+      getCurrentWebviewWindow().close().catch(() => {});
+    });
   };
+
+  const forget = () => {
+    if (!selected || selected.id === BAKED_PROFILE_ID) return;
+    removeProfile(selected.id);
+    setReveal(false);
+    refreshProfiles();
+  };
+
+  const shareText = (p: ChatProfile) =>
+    p.provider === "supabase"
+      ? `Nobi 聊天连接：\nURL: ${p.supabaseUrl}\nkey: ${p.supabaseAnonKey}\n房间号: ${room || "（约定一个）"}\n（在 Nobi 聊天选「新建连接」填进去）`
+      : `Nobi 聊天连接（自建服务器）：\n地址: ${p.serverUrl}\n房间号: ${room || "（约定一个）"}`;
+
+  const setD = (patch: Partial<Omit<ChatProfile, "id">>) => setDraft((d) => ({ ...d, ...patch }));
 
   return (
     <div className="chat-setup">
-      <h3>发起 / 加入群</h3>
+      {conns.length > 0 && (
+        <div className="chat-roomlist">
+          <div className="chat-roomlist-title">我的聊天</div>
+          {conns
+            .filter((c) => getProfile(c.profileId))
+            .map((c) => {
+              const p = getProfile(c.profileId);
+              return (
+                <div
+                  className="chat-roomitem"
+                  key={`${c.profileId}-${c.room}`}
+                  onClick={() => goRoom(c.profileId, c.room)}
+                  title="点击进入"
+                >
+                  <span className="chat-roomitem-room">#{c.room}</span>
+                  <span className="chat-roomitem-srv">{p?.label}</span>
+                  <button
+                    className="chat-roomitem-x"
+                    title="退出此群"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      leaveRoom(c.profileId, c.room);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      <h3>{conns.length > 0 ? "新建 / 加入群" : "发起 / 加入群"}</h3>
 
       <label className="chat-field">
         <span>名字</span>
-        <input value={cfg.nickname} onChange={(e) => set({ nickname: e.target.value })} placeholder="朋友看到的名字" autoFocus />
+        <input value={nickname} onChange={(e) => setNick(e.target.value)} placeholder="朋友看到的名字" autoFocus />
       </label>
+
+      <label className="chat-field">
+        <span>头像</span>
+        <div className="chat-ava-pick">
+          <button
+            type="button"
+            className={`chat-ava-opt ${!avatar ? "on" : ""}`}
+            title="默认（彩色首字）"
+            onClick={() => pickAvatar("")}
+          >
+            <MsgAvatar name={nickname || "?"} />
+          </button>
+          <button
+            type="button"
+            className="chat-ava-opt chat-ava-upload"
+            title="上传图片"
+            onClick={() => fileRef.current?.click()}
+          >
+            ＋
+          </button>
+          {isImageAvatar(avatar) && (
+            <button type="button" className="chat-ava-opt on" title="当前自定义头像">
+              <img className="chat-ava-mini" src={avatar} alt="" />
+            </button>
+          )}
+          {AVATAR_CHOICES.map((a) => (
+            <button
+              key={a}
+              type="button"
+              className={`chat-ava-opt ${avatar === a ? "on" : ""}`}
+              onClick={() => pickAvatar(a)}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={onPickFile}
+        />
+      </label>
+
+      <label className="chat-field">
+        <span>连接（后端服务器）</span>
+        <select value={selectedId} onChange={(e) => { setSelectedId(e.target.value); setReveal(false); }}>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+          <option value="new">＋ 新建连接…</option>
+        </select>
+      </label>
+
+      {/* 已保存的连接：分享 / 退出（内置后端可分享、不可删） */}
+      {selected && (
+        <div className="chat-conn-actions">
+          <button type="button" onClick={() => setReveal((v) => !v)}>
+            {reveal ? "隐藏凭据" : "显示 / 分享凭据"}
+          </button>
+          {selected.id !== BAKED_PROFILE_ID && (
+            <button type="button" className="danger" onClick={forget}>退出（删除此连接）</button>
+          )}
+        </div>
+      )}
+
+      {selected && reveal && (
+        <div className="chat-share">
+          {selected.provider === "supabase" ? (
+            <>
+              <div className="chat-share-row">
+                <span>URL</span>
+                <code title={selected.supabaseUrl}>{selected.supabaseUrl}</code>
+                <button type="button" onClick={() => copy(selected.supabaseUrl || "", " URL")}>复制</button>
+              </div>
+              <div className="chat-share-row">
+                <span>key</span>
+                <code title={selected.supabaseAnonKey}>{selected.supabaseAnonKey}</code>
+                <button type="button" onClick={() => copy(selected.supabaseAnonKey || "", " key")}>复制</button>
+              </div>
+            </>
+          ) : (
+            <div className="chat-share-row">
+              <span>地址</span>
+              <code title={selected.serverUrl}>{selected.serverUrl}</code>
+              <button type="button" onClick={() => copy(selected.serverUrl || "", " 地址")}>复制</button>
+            </div>
+          )}
+          <button type="button" className="chat-share-all" onClick={() => copy(shareText(selected), "全部，发给朋友")}>
+            复制全部（URL+key+房间号）发给朋友
+          </button>
+          {copied && <span className="chat-copied">{copied}</span>}
+        </div>
+      )}
+
+      {/* 新建连接表单 */}
+      {isNew && (
+        <>
+          <label className="chat-field">
+            <span>连接名称</span>
+            <input value={draft.label} onChange={(e) => setD({ label: e.target.value })} placeholder="给这个服务器起个名（如：我的Supabase）" />
+          </label>
+          <label className="chat-field">
+            <span>后端类型</span>
+            <select value={draft.provider} onChange={(e) => setD({ provider: e.target.value as ChatProvider })}>
+              {(Object.keys(PROVIDER_LABELS) as ChatProvider[]).map((p) => (
+                <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+              ))}
+            </select>
+          </label>
+          {draft.provider === "supabase" && (
+            <>
+              <label className="chat-field">
+                <span>Supabase URL</span>
+                <input value={draft.supabaseUrl} onChange={(e) => setD({ supabaseUrl: e.target.value })} placeholder="https://xxxx.supabase.co" />
+              </label>
+              <label className="chat-field">
+                <span>anon key</span>
+                <input value={draft.supabaseAnonKey} onChange={(e) => setD({ supabaseAnonKey: e.target.value })} placeholder="Settings → API 里的 anon / publishable" />
+              </label>
+            </>
+          )}
+          {draft.provider === "custom" && (
+            <>
+              <label className="chat-field">
+                <span>服务器地址</span>
+                <input value={draft.serverUrl} onChange={(e) => setD({ serverUrl: e.target.value })} placeholder="wss://你的域名/ws" />
+              </label>
+              <label className="chat-field">
+                <span>Token（可选）</span>
+                <input value={draft.serverToken} onChange={(e) => setD({ serverToken: e.target.value })} placeholder="可留空" />
+              </label>
+            </>
+          )}
+
+          <details className="chat-guide">
+            <summary>📖 怎么搭后端？(免费 · 约 5 分钟)</summary>
+            {draft.provider === "supabase" ? (
+              <div className="chat-guide-body">
+                <ol>
+                  <li>浏览器打开 <code>supabase.com</code> 注册 → New Project（区域选 Singapore / Tokyo 离国内近）</li>
+                  <li>
+                    左侧 <b>SQL Editor</b> → 新建查询 → 粘贴 SQL → Run（建表 + 实时 + 存储 + 24h 自动清理）
+                    <button type="button" className="chat-copy-sql" onClick={copySql}>
+                      {sqlCopied ? "已复制 ✓" : "复制建表 SQL"}
+                    </button>
+                  </li>
+                  <li>左侧 <b>Settings → API</b>，复制 <b>Project URL</b> 和 <b>anon / publishable key</b> 填到上面</li>
+                  <li>把这两样 + 房间号发给朋友，他「新建连接」填一样的就进同一个群</li>
+                </ol>
+                <p className="chat-guide-note">消息走 HTTPS 加密、过你自己的 Supabase；24 小时自动焚毁，长期免费。</p>
+              </div>
+            ) : (
+              <div className="chat-guide-body">
+                <p>
+                  填你自己的 <code>wss://</code> 地址。服务器需实现的协议见源码
+                  <code> src/chat/customBackend.ts</code> 顶部注释（join / text / image 帧 + /upload /history）。
+                </p>
+              </div>
+            )}
+          </details>
+        </>
+      )}
 
       <label className="chat-field">
         <span>房间号</span>
@@ -410,52 +860,12 @@ function ChatLauncher() {
         </div>
       </label>
 
-      {!CREDENTIALS_BAKED && (
-        <>
-          <label className="chat-field">
-            <span>后端</span>
-            <select value={cfg.provider} onChange={(e) => set({ provider: e.target.value as ChatProvider })}>
-              {(Object.keys(PROVIDER_LABELS) as ChatProvider[]).map((p) => (
-                <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
-              ))}
-            </select>
-          </label>
-          {cfg.provider === "supabase" && (
-            <>
-              <label className="chat-field">
-                <span>Supabase URL</span>
-                <input value={cfg.supabaseUrl || ""} onChange={(e) => set({ supabaseUrl: e.target.value })} placeholder="https://xxxx.supabase.co" />
-              </label>
-              <label className="chat-field">
-                <span>anon key</span>
-                <input value={cfg.supabaseAnonKey || ""} onChange={(e) => set({ supabaseAnonKey: e.target.value })} placeholder="项目 Settings → API 里的 anon public" />
-              </label>
-            </>
-          )}
-          {cfg.provider === "custom" && (
-            <>
-              <label className="chat-field">
-                <span>服务器地址</span>
-                <input value={cfg.serverUrl || ""} onChange={(e) => set({ serverUrl: e.target.value })} placeholder="wss://你的域名/ws" />
-              </label>
-              <label className="chat-field">
-                <span>Token（可选）</span>
-                <input value={cfg.serverToken || ""} onChange={(e) => set({ serverToken: e.target.value })} placeholder="可留空" />
-              </label>
-            </>
-          )}
-        </>
-      )}
+      {keyRow("老板键（一键藏 / 显所有聊天窗）", "boss", bossKey)}
+      {keyRow("透明度 · 调淡", "opDown", opDown)}
+      {keyRow("透明度 · 调浓", "opUp", opUp)}
+      {keyErr && <p className="chat-key-err">{keyErr}</p>}
 
-      <label className="chat-field">
-        <span>老板键（一键藏 / 显所有聊天窗）</span>
-        <div className="chat-room-row">
-          <input readOnly value={recording ? "按新组合…（Esc 取消）" : fmtAccel(bossKey)} />
-          <button type="button" onClick={() => setRecording(true)}>改键</button>
-        </div>
-      </label>
-
-      <p className="chat-hint">点「进入」开这个群的独立窗口；可反复进入不同房间号，多个群并排开着。</p>
+      <p className="chat-hint">点「进入」开这个连接的独立窗口；不同连接（服务器）可并排开着。</p>
       <div className="chat-setup-actions">
         <button className="primary" disabled={!ready} onClick={enter}>进入</button>
       </div>

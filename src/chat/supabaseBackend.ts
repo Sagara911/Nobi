@@ -19,10 +19,11 @@ interface Row {
   room: string;
   sender: string;
   client_id: string;
-  kind: "text" | "image";
+  kind: "text" | "image" | "video";
   body: string | null;
   asset_url: string | null;
   asset_name: string | null;
+  avatar?: string | null;
   created_at: string;
 }
 
@@ -41,6 +42,7 @@ function rowToMessage(r: Row): ChatMessage {
     sender: r.sender,
     clientId: r.client_id,
     kind: r.kind,
+    avatar: r.avatar ?? undefined,
     body: r.body ?? undefined,
     assetUrl: r.asset_url ?? undefined,
     assetName: r.asset_name ?? undefined,
@@ -109,13 +111,15 @@ export class SupabaseBackend implements ChatBackend {
       client_id: this.cfg.clientId,
       kind: "text",
       body: text,
+      ...(this.cfg.avatar ? { avatar: this.cfg.avatar } : {}),
     });
     if (error) throw new Error(error.message);
   }
 
   async sendAsset(asset: OutgoingAsset, caption?: string): Promise<void> {
-    // 1. 取图片字节（拖拽来的直接给 blob，右键发素材给 url）
+    // 1. 取字节（拖拽来的直接给 blob，右键发素材给 url）
     const blob = asset.blob ?? (await fetchBlob(asset.url));
+    const kind = asset.kind ?? (blob.type.startsWith("video/") ? "video" : "image");
 
     // 2. 上传到 Storage（路径带房间号 + 时间戳避免重名）
     const safeName = asset.name.replace(/[^\w.\-]/g, "_");
@@ -136,10 +140,11 @@ export class SupabaseBackend implements ChatBackend {
       room: this.cfg.room,
       sender: this.cfg.nickname,
       client_id: this.cfg.clientId,
-      kind: "image",
+      kind,
       body: caption || null,
       asset_url: data.publicUrl,
       asset_name: asset.name,
+      ...(this.cfg.avatar ? { avatar: this.cfg.avatar } : {}),
     });
     if (error) throw new Error(error.message);
   }

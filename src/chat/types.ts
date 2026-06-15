@@ -14,10 +14,12 @@ export interface ChatMessage {
   sender: string;
   /** 发送端的稳定标识（区分"是不是我自己发的"，昵称可能重名） */
   clientId: string;
-  kind: "text" | "image";
-  /** 文本内容；图片消息里作为图注（可空） */
+  kind: "text" | "image" | "video";
+  /** 发送者头像（emoji，可空→收端用默认彩色首字头像） */
+  avatar?: string;
+  /** 文本内容；图片/视频消息里作为图注（可空） */
   body?: string;
-  /** 图片消息的可访问 URL */
+  /** 图片/视频消息的可访问 URL */
   assetUrl?: string;
   assetName?: string;
   /** epoch 毫秒 */
@@ -38,6 +40,8 @@ export interface OutgoingAsset {
   blob?: Blob;
   /** 或给一个可 fetch 的 URL（右键发素材走 convertFileSrc）——blob 缺省时用 */
   url?: string;
+  /** 媒体类型；缺省时按 blob/文件 mime 推断（video/* → video，否则 image） */
+  kind?: "image" | "video";
 }
 
 /** 聊天配置（存 localStorage，见 config.ts） */
@@ -48,6 +52,8 @@ export interface ChatConfig {
   room: string;
   /** 本机稳定标识，自动生成，不需用户填 */
   clientId: string;
+  /** 头像 emoji（可空） */
+  avatar?: string;
 
   // —— Supabase 后端 ——
   supabaseUrl?: string;

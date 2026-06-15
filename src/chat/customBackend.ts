@@ -47,7 +47,8 @@ interface WireMessage {
   room: string;
   sender: string;
   clientId: string;
-  kind: "text" | "image";
+  kind: "text" | "image" | "video";
+  avatar?: string;
   body?: string;
   assetUrl?: string;
   assetName?: string;
@@ -124,6 +125,7 @@ export class CustomServerBackend implements ChatBackend {
               sender: frame.sender,
               clientId: frame.clientId,
               kind: frame.kind,
+              avatar: frame.avatar,
               body: frame.body,
               assetUrl: frame.assetUrl,
               assetName: frame.assetName,
@@ -155,6 +157,7 @@ export class CustomServerBackend implements ChatBackend {
         room: this.cfg.room,
         sender: this.cfg.nickname,
         clientId: this.cfg.clientId,
+        avatar: this.cfg.avatar || undefined,
         body: text,
       }),
     );
@@ -183,13 +186,15 @@ export class CustomServerBackend implements ChatBackend {
     if (!up.ok) throw new Error(`上传失败：${up.status}`);
     const { url } = (await up.json()) as { url: string };
 
-    // 2. 广播 image 帧
+    // 2. 广播 image/video 帧
+    const kind = asset.kind ?? (blob.type.startsWith("video/") ? "video" : "image");
     this.ws.send(
       JSON.stringify({
-        type: "image",
+        type: kind,
         room: this.cfg.room,
         sender: this.cfg.nickname,
         clientId: this.cfg.clientId,
+        avatar: this.cfg.avatar || undefined,
         assetUrl: url,
         assetName: asset.name,
         body: caption || undefined,

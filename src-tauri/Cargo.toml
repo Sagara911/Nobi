@@ -40,6 +40,7 @@ tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
 # 全局快捷键（看球小窗老板键 Alt+`、直开窗透明度 Alt+- / Alt+=）—— 桌面端专属
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
 
 # 直开看球窗：原生窗口 alpha（SetLayeredWindowAttributes）+ 老板键静音（WebView2 IsMuted）—— 仅 Windows
 [target.'cfg(windows)'.dependencies]

@@ -18,3 +18,5 @@ export function createBackend(cfg: ChatConfig): ChatBackend {
 
 export * from "./types";
 export * from "./config";
+export * from "./setupSql";
+export * from "./avatar";

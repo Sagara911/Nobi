@@ -17,11 +17,15 @@ create table if not exists public.messages (
   room        text        not null,
   sender      text        not null,
   client_id   text        not null,
-  kind        text        not null default 'text',   -- 'text' | 'image'
+  kind        text        not null default 'text',   -- 'text' | 'image' | 'video'
   body        text,                                   -- 文本内容 / 图注
-  asset_url   text,                                   -- 图片消息的公开 URL
-  asset_name  text
+  asset_url   text,                                   -- 图片/视频消息的公开 URL
+  asset_name  text,
+  avatar      text                                    -- 发送者头像 emoji
 );
+
+-- 老表升级：加头像列（已存在则跳过）
+alter table public.messages add column if not exists avatar text;
 
 create index if not exists messages_room_created_idx
   on public.messages (room, created_at);

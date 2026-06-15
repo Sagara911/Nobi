@@ -5,6 +5,11 @@
 // ============================================================
 
 import { invoke } from "@tauri-apps/api/core";
+import {
+  enable as autostartEnable,
+  disable as autostartDisable,
+  isEnabled as autostartIsEnabled,
+} from "@tauri-apps/plugin-autostart";
 import type {
   AiCfg,
   AiCmd,
@@ -33,6 +38,18 @@ export const webResetKeys = () => invoke<void>("web_reset_keys");
 export const chatGetBossKey = () => invoke<string>("chat_get_boss_key");
 export const chatSetBossKey = (accel: string) =>
   invoke<void>("chat_set_boss_key", { accel });
+// 聊天窗透明度键（可改）：get 返回 [调淡键, 调浓键]
+export const chatGetOpacityKeys = () => invoke<string[]>("chat_get_opacity_keys");
+export const chatSetOpacityKey = (which: "down" | "up", accel: string) =>
+  invoke<void>("chat_set_opacity_key", { which, accel });
+
+// 开机自启（Tauri 官方插件；Windows 走注册表 HKCU Run）
+export const getAutostart = () => autostartIsEnabled();
+export const setAutostart = (on: boolean) =>
+  on ? autostartEnable() : autostartDisable();
+// 聊天未读提醒（托盘红点）：来新消息 +1 / 看了清零
+export const chatBumpUnread = () => invoke<void>("chat_bump_unread");
+export const chatClearUnread = () => invoke<void>("chat_clear_unread");
 
 // ---- 素材库 ----
 export const listAssets = () => invoke<Asset[]>("list_assets");
