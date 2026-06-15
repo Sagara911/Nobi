@@ -28,7 +28,8 @@ import {
 import Konva from "konva";
 import getStroke from "perfect-freehand";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { save as saveDialog, message as msgDialog } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   type BoardMeta,
   createBoard,
@@ -1595,18 +1596,38 @@ export default function BoardCanvas({
       const dataUrl = stage.toDataURL({ mimeType: "image/png" });
       stage.destroy();
       const name = `${boards.find((bd) => bd.id === boardIdRef.current)?.name || "画板"}.png`;
+      let path: string | null = null;
       try {
-        const path = await saveDialog({
+        path = await saveDialog({
           defaultPath: name,
           filters: [{ name: "PNG", extensions: ["png"] }],
         });
-        if (path) await saveFile(path, dataUrl.split(",")[1]);
-      } catch {
-        // 浏览器环境：退回 <a download>
-        const a = document.createElement("a");
-        a.href = dataUrl;
-        a.download = name;
-        a.click();
+      } catch (e) {
+        // 桌面 app 里 saveDialog 不该失败；真失败就报错——别写出坏掉的浏览器下载
+        //（WebView2 里 <a download> 存 data URL 会得到一个假 png/HTML 文件）。
+        const isTauri =
+          typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+        if (isTauri) {
+          await msgDialog(`导出失败：${String(e)}`, { title: "导出 PNG", kind: "error" }).catch(
+            () => {},
+          );
+        } else {
+          const a = document.createElement("a");
+          a.href = dataUrl;
+          a.download = name;
+          a.click();
+        }
+        return;
+      }
+      if (!path) return; // 用户取消了保存对话框
+      try {
+        await saveFile(path, dataUrl.split(",")[1]);
+        // 存好后直接打开所在文件夹并高亮该文件——再也不用找
+        await revealItemInDir(path).catch(() => {});
+      } catch (e) {
+        await msgDialog(`导出失败：${String(e)}`, { title: "导出 PNG", kind: "error" }).catch(
+          () => {},
+        );
       }
     } finally {
       holder.remove();
