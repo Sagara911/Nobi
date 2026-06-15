@@ -201,11 +201,16 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   const [stickers, setStickers] = useState<Sticker[]>(() => getStickers());
   const [mentionQ, setMentionQ] = useState<string | null>(null); // 正在输入的 @查询(null=没在@)
 
-  // @候选：聊过天的人(去重，排除自己) + 「所有人」
+  // @候选：按"人"(clientId)去重，每人只取其最新用过的名字——避免某人改名后
+  // 历史里堆一堆旧名字。排除自己 + 加「所有人」。
   const mentionNames = useMemo(() => {
-    const set = new Set<string>();
-    for (const m of messages) if (m.sender && m.clientId !== cfg?.clientId) set.add(m.sender);
-    return ["所有人", ...set];
+    const byClient = new Map<string, string>(); // clientId → 最新名字（后出现的覆盖先前的）
+    for (const m of messages) {
+      if (m.clientId && m.clientId !== cfg?.clientId && m.sender) {
+        byClient.set(m.clientId, m.sender);
+      }
+    }
+    return ["所有人", ...byClient.values()];
   }, [messages, cfg]);
   const mentionList =
     mentionQ === null
