@@ -166,7 +166,7 @@ fn handle_right_click(x: i32, y: i32, event_ms: u64) {
         if text.chars().count() < 2 {
             return;
         }
-        if !looks_like_english_text(&text) {
+        if !looks_translatable(&text) {
             return;
         }
 
@@ -472,20 +472,17 @@ fn selected_text_from_element(
 }
 
 #[cfg(windows)]
-fn looks_like_english_text(text: &str) -> bool {
-    let mut latin_letters = 0usize;
-    let mut language_letters = 0usize;
-
+fn looks_translatable(text: &str) -> bool {
+    // Pop the popover for any real-language selection (Latin, CJK, Cyrillic,
+    // Hangul, …). We only suppress selections that are essentially pure
+    // numbers, punctuation, or symbols, where translation is meaningless.
+    let mut letters = 0usize;
     for ch in text.chars() {
-        if ch.is_ascii_alphabetic() {
-            latin_letters += 1;
-            language_letters += 1;
-        } else if is_cjk_char(ch) || ch.is_alphabetic() {
-            language_letters += 1;
+        if ch.is_alphabetic() || is_cjk_char(ch) {
+            letters += 1;
         }
     }
-
-    latin_letters >= 2 && latin_letters * 100 >= language_letters.max(1) * 82
+    letters >= 2
 }
 
 #[cfg(windows)]
@@ -506,22 +503,25 @@ fn is_cjk_char(ch: char) -> bool {
 
 #[cfg(all(test, windows))]
 mod selection_translate_tests {
-    use super::looks_like_english_text;
+    use super::looks_translatable;
 
     #[test]
-    fn detects_english_selection() {
-        assert!(looks_like_english_text(
-            "This sentence should be detected as English text."
+    fn pops_for_any_language() {
+        assert!(looks_translatable(
+            "This sentence should be detected as text."
         ));
-        assert!(looks_like_english_text("ambient_occlusion"));
-        assert!(looks_like_english_text("UV"));
+        assert!(looks_translatable("ambient_occlusion"));
+        assert!(looks_translatable("UV"));
+        assert!(looks_translatable("这是一段中文"));
+        assert!(looks_translatable("翻译 translate"));
+        assert!(looks_translatable("これは日本語"));
     }
 
     #[test]
-    fn ignores_non_english_selection() {
-        assert!(!looks_like_english_text("这是一段中文"));
-        assert!(!looks_like_english_text("12345 / 67890"));
-        assert!(!looks_like_english_text("翻译 translate"));
+    fn ignores_pure_symbols_and_numbers() {
+        assert!(!looks_translatable("12345 / 67890"));
+        assert!(!looks_translatable("--- *** ==="));
+        assert!(!looks_translatable("a"));
     }
 }
 

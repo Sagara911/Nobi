@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type {
   GlossaryTerm,
   TranslationHistoryItem,
@@ -28,6 +29,44 @@ export default function TranslationModal({ onClose }: { onClose: () => void }) {
   const [termTarget, setTermTarget] = useState("");
   const [termExplanation, setTermExplanation] = useState("");
   const [termCategory, setTermCategory] = useState("通用");
+  const [nmt, setNmt] = useState<{ enZh: boolean; zhEn: boolean } | null>(null);
+  const [nmtBusy, setNmtBusy] = useState(false);
+  const [nmtProgress, setNmtProgress] = useState("");
+
+  useEffect(() => {
+    api.nmtStatus().then(setNmt).catch(() => {});
+    const un = listen<{
+      dir: string;
+      file: string;
+      index: number;
+      totalFiles: number;
+      downloaded: number;
+      total: number;
+    }>("nmt-download-progress", (e) => {
+      const p = e.payload;
+      const mb = (n: number) => (n / 1024 / 1024).toFixed(0);
+      const pct = p.total ? ` ${Math.floor((p.downloaded / p.total) * 100)}%` : "";
+      setNmtProgress(`${p.dir} ${p.file} (${p.index}/${p.totalFiles}) ${mb(p.downloaded)}MB${pct}`);
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  async function downloadNmt() {
+    if (nmtBusy) return;
+    setNmtBusy(true);
+    setNmtProgress("准备下载…");
+    try {
+      await api.downloadNmtModels();
+      setNmt(await api.nmtStatus());
+      setNmtProgress("离线翻译包已就绪");
+    } catch (e) {
+      setNmtProgress(`下载失败：${e}`);
+    } finally {
+      setNmtBusy(false);
+    }
+  }
 
   async function refresh() {
     const [gs, hs] = await Promise.all([
@@ -170,7 +209,18 @@ export default function TranslationModal({ onClose }: { onClose: () => void }) {
                     {result.sourceLang} → {result.targetLang}
                   </span>
                 </div>
+                {result.phonetic && <div className="tr-phonetic">/{result.phonetic}/</div>}
                 <pre>{result.targetText}</pre>
+                {result.dictionary && result.dictionary.length > 0 && (
+                  <dl className="tr-dict">
+                    {result.dictionary.map((d) => (
+                      <div className="tr-dict-row" key={d.pos || d.terms.join(",")}>
+                        {d.pos && <dt>{d.pos}</dt>}
+                        <dd>{d.terms.join("；")}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
                 {result.warning && <div className="warn-text">Provider 警告：{result.warning}</div>}
                 {result.usedGlossary.length > 0 && (
                   <div className="tr-hit-list">
@@ -195,6 +245,24 @@ export default function TranslationModal({ onClose }: { onClose: () => void }) {
           </section>
 
           <aside className="tr-side">
+            <h4>离线翻译包</h4>
+            <div className="tr-nmt">
+              <div className="dim">
+                整句离线翻译（中英互译，约 220MB）。装好后断网、无本地模型也能翻句子。
+              </div>
+              {nmt && (
+                <div className="tr-nmt-status">
+                  英→中 {nmt.enZh ? "✓ 已装" : "✗ 未装"} ・ 中→英 {nmt.zhEn ? "✓ 已装" : "✗ 未装"}
+                </div>
+              )}
+              {nmt && (!nmt.enZh || !nmt.zhEn) && (
+                <button className="btn" onClick={downloadNmt} disabled={nmtBusy}>
+                  {nmtBusy ? "下载中…" : "下载离线翻译包"}
+                </button>
+              )}
+              {nmtProgress && <div className="dim tr-nmt-progress">{nmtProgress}</div>}
+            </div>
+
             <h4>自定义词库</h4>
             <div className="tr-term-form">
               <input

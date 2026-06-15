@@ -110,6 +110,9 @@ export const saveGlossaryTerm = (term: GlossaryTermInput) =>
 export const deleteGlossaryTerm = (id: number) => invoke<void>("delete_glossary_term", { id });
 export const listTranslationHistory = (limit = 30) =>
   invoke<TranslationHistoryItem[]>("list_translation_history", { limit });
+// 离线翻译包（OPUS-MT 神经模型）按需下载
+export const nmtStatus = () => invoke<{ enZh: boolean; zhEn: boolean }>("nmt_status");
+export const downloadNmtModels = () => invoke<void>("download_nmt_models");
 
 // ---- 画板（快照权威副本在 SQLite，localStorage 只是快取；多画板） ----
 export interface BoardMeta {

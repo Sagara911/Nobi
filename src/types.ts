@@ -85,6 +85,11 @@ export interface GlossaryHit {
   category: string;
 }
 
+export interface DictionaryEntry {
+  pos: string;
+  terms: string[];
+}
+
 export interface TranslationResult {
   id?: number;
   sourceText: string;
@@ -95,6 +100,8 @@ export interface TranslationResult {
   provider: string;
   usedGlossary: GlossaryHit[];
   keywords: string[];
+  dictionary?: DictionaryEntry[];
+  phonetic?: string;
   warning?: string;
 }
 

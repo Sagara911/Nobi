@@ -17,6 +17,7 @@ mod collections;
 mod db;
 mod library;
 mod mcp_api;
+mod nmt;
 mod search;
 mod selection_translate;
 mod settings;
@@ -1058,6 +1059,8 @@ pub fn run() {
             translation::save_glossary_term,
             translation::delete_glossary_term,
             translation::list_translation_history,
+            nmt::nmt_status,
+            nmt::download_nmt_models,
             selection_translate::close_selection_translate_window,
             // board
             board::list_boards,

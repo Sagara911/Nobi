@@ -796,6 +796,48 @@ textarea.cfg-input { resize: vertical; font-family: inherit; line-height: 1.5; }
   font-family: inherit;
   line-height: 1.7;
 }
+.tr-phonetic {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.tr-nmt {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+.tr-nmt-status {
+  color: var(--text-2);
+}
+.tr-nmt-progress {
+  font-variant-numeric: tabular-nums;
+}
+.tr-dict {
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.tr-dict-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.tr-dict-row dt {
+  flex: 0 0 auto;
+  min-width: 44px;
+  color: var(--text-3);
+  font-style: italic;
+}
+.tr-dict-row dd {
+  margin: 0;
+  color: var(--text-1);
+  word-break: break-word;
+}
 .tr-hit-list {
   display: flex;
   flex-wrap: wrap;

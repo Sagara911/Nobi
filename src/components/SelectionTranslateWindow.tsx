@@ -167,7 +167,7 @@ export default function SelectionTranslateWindow() {
     try {
       const r = await api.translateText({
         text,
-        targetLang: "zh-CN",
+        targetLang: "auto",
         mode: "normal",
         provider: "auto",
         sourceApp: payload?.sourceApp || "system-selection",
@@ -184,6 +184,7 @@ export default function SelectionTranslateWindow() {
         targetText: r.targetText,
         message: nextMessage,
         terms: r.usedGlossary.length,
+        dictRows: (r.dictionary?.length ?? 0) + (r.phonetic ? 1 : 0),
       });
       await placeWindow(nextSize);
       await win().setSize(nextSize).catch(() => {});
@@ -269,7 +270,18 @@ export default function SelectionTranslateWindow() {
                     </span>
                     <span>{result.provider}</span>
                   </div>
+                  {result.phonetic && <p className="stw-phonetic">/{result.phonetic}/</p>}
                   <p>{result.targetText}</p>
+                  {result.dictionary && result.dictionary.length > 0 && (
+                    <dl className="stw-dict">
+                      {result.dictionary.map((d) => (
+                        <div className="stw-dict-row" key={d.pos || d.terms.join(",")}>
+                          {d.pos && <dt>{d.pos}</dt>}
+                          <dd>{d.terms.join("；")}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
                   {result.usedGlossary.length > 0 && (
                     <div className="stw-terms">
                       {result.usedGlossary.slice(0, 4).map((h) => (

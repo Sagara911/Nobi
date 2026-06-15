@@ -218,6 +218,7 @@ pub fn handle_api(app: &tauri::AppHandle, method: &str, url: &str, body: &str) -
         }
 
         ("POST", "/api/translate") => {
+            // 翻译引擎入口：浏览器扩展 / 划词浮窗 / MCP 桥都走这里
             let req_value = parsed.get("req").cloned().unwrap_or(parsed.clone());
             let req: crate::translation::TranslationRequest = match serde_json::from_value(req_value) {
                 Ok(r) => r,

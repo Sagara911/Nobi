@@ -73,7 +73,7 @@ async function translateSelection(info, tab) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
-        targetLang: "zh-CN",
+        targetLang: "auto",
         mode: "art_terms",
         provider: "auto",
         sourceApp: "browser-extension",
@@ -93,6 +93,8 @@ async function translateSelection(info, tab) {
       targetLang: result.targetLang || "zh-CN",
       provider: result.provider || "",
       glossaryHits: result.usedGlossary || result.glossaryHits || [],
+      dictionary: Array.isArray(result.dictionary) ? result.dictionary : [],
+      phonetic: result.phonetic || "",
     };
 
     const shown = await showTranslationInPage(tab && tab.id, payload);
@@ -172,6 +174,33 @@ function renderTranslationPopover(payload) {
       background: rgba(255,255,255,.06);
       color: #fff;
     }
+    .phonetic {
+      margin: -6px 0 12px;
+      color: rgba(245,245,247,.6);
+      font-size: 13px;
+    }
+    .dict {
+      margin: 0 0 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .dict-row {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+    }
+    .dict-row dt {
+      flex: 0 0 auto;
+      min-width: 44px;
+      color: rgba(245,245,247,.55);
+      font-style: italic;
+    }
+    .dict-row dd {
+      margin: 0;
+      color: rgba(245,245,247,.92);
+      word-break: break-word;
+    }
     .meta {
       display: flex;
       flex-wrap: wrap;
@@ -227,8 +256,15 @@ function renderTranslationPopover(payload) {
     block(payload.sourceText || "", "text"),
     label("译文"),
     block(payload.targetText || "没有翻译结果", "text target"),
-    meta(payload),
   );
+  if (payload.phonetic) {
+    body.append(block("/" + payload.phonetic + "/", "phonetic"));
+  }
+  const dictEl = dict(payload.dictionary);
+  if (dictEl) {
+    body.append(label("释义"), dictEl);
+  }
+  body.append(meta(payload));
 
   const actions = document.createElement("div");
   actions.className = "actions";
@@ -258,6 +294,28 @@ function renderTranslationPopover(payload) {
     p.className = className;
     p.textContent = text;
     return p;
+  }
+
+  function dict(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return null;
+    const wrap = document.createElement("dl");
+    wrap.className = "dict";
+    for (const e of entries) {
+      const terms = Array.isArray(e.terms) ? e.terms : [];
+      if (terms.length === 0) continue;
+      const rowEl = document.createElement("div");
+      rowEl.className = "dict-row";
+      if (e.pos) {
+        const dt = document.createElement("dt");
+        dt.textContent = e.pos;
+        rowEl.appendChild(dt);
+      }
+      const dd = document.createElement("dd");
+      dd.textContent = terms.join("；");
+      rowEl.appendChild(dd);
+      wrap.appendChild(rowEl);
+    }
+    return wrap.children.length ? wrap : null;
   }
 
   function meta(data) {

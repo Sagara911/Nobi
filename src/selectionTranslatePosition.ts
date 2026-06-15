@@ -40,11 +40,13 @@ export function selectionTranslatePanelSize({
   targetText = "",
   message = "",
   terms = 0,
+  dictRows = 0,
 }: {
   sourceText: string;
   targetText?: string;
   message?: string;
   terms?: number;
+  dictRows?: number;
 }) {
   const longest = Math.max(normalizedLength(sourceText), normalizedLength(targetText));
   const width = longest <= 28 ? PANEL_MIN_WIDTH : longest <= 80 ? 400 : PANEL_MAX_WIDTH;
@@ -58,6 +60,7 @@ export function selectionTranslatePanelSize({
   if (targetText.trim()) {
     const resultLines = Math.min(7, estimatedLineCount(targetText, charsPerLine));
     height += 22 + Math.max(42, resultLines * 21 + 20) + 40;
+    if (dictRows > 0) height += Math.min(dictRows, 5) * 24 + 8;
     if (terms > 0) height += 28;
   } else {
     height += 32;
