@@ -37,6 +37,27 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+/// 打开（或聚焦）聊天启动器窗——托盘「便签」入口，等价前端 openChatWindow。
+/// 主窗收在托盘里也能直接开，不用先露面。
+fn open_chat_launcher(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("chat") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    // 甩到异步线程建窗——别占主线程（同 open_direct_window：Windows 上同步建窗会白屏）
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        use tauri::{WebviewUrl, WebviewWindowBuilder};
+        let _ = WebviewWindowBuilder::new(&app, "chat", WebviewUrl::App("index.html#chat".into()))
+            .title("Nobi 聊天")
+            .inner_size(340.0, 420.0)
+            .resizable(true)
+            .build();
+    });
+}
+
 /// 看球小窗老板键：按一下把所有 web-* 窗藏起来，再按一下全部恢复。
 /// 任一窗当前可见即视为「显示中」→ 全藏；否则 → 全显。
 #[cfg(desktop)]
@@ -827,7 +848,7 @@ fn web_set_key(app: tauri::AppHandle, action: String, accel: String) -> Result<(
     // 与其它看球动作冲突？
     if let Ok(keys) = WEB_KEYS.lock() {
         if keys.iter().any(|(a, _, s)| *a != action && *s == sc) {
-            return Err("和看球里另一个快捷键重复了".into());
+            return Err("和浏览窗里另一个快捷键重复了".into());
         }
     }
     set_web_hotkeys(&app, false, false); // 先把当前全注销（用旧绑定）
@@ -1046,7 +1067,7 @@ fn open_direct_window(app: &tauri::AppHandle, url: String) -> Result<(), String>
     let parsed: tauri::Url = url.parse().map_err(|e| format!("网址无效：{e}"))?;
     let label = format!("web-d{}", DIRECT_SEQ.fetch_add(1, Ordering::Relaxed));
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
-        .title("看球（直开外链）")
+        .title("浏览窗（外部网页）")
         .decorations(false)
         .always_on_top(true)
         .resizable(true)
@@ -1407,9 +1428,10 @@ pub fn run() {
 
             // 系统托盘：关窗收进托盘（后台采集/MCP 服务不中断），点图标还原
             let show = MenuItem::with_id(app, "show", "显示 Nobi", true, None::<&str>)?;
-            let watch = MenuItem::with_id(app, "watch", "📺 看球（上次的台）", true, None::<&str>)?;
+            let watch = MenuItem::with_id(app, "watch", "🌐 浏览窗（上次的页）", true, None::<&str>)?;
+            let note = MenuItem::with_id(app, "note", "📝 便签", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &watch, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &watch, &note, &quit])?;
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Nobi")
@@ -1431,6 +1453,7 @@ pub fn run() {
                             None => show_main(app),
                         }
                     }
+                    "note" => open_chat_launcher(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })

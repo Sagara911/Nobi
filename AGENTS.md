@@ -61,6 +61,9 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
   - **房间窗内改名/换头像**：群窗右上角头像钮(`chat-me`)开内嵌编辑区(`chat-idedit`)，改名+选 emoji/上传图/默认。**不重连即时生效**——后端新增可选能力 `ChatBackend.updateIdentity(nickname, avatar?)`，只改 `this.cfg` 身份字段(房间/订阅不依赖昵称)，之后发的消息即用新身份；自建后端额外补发一帧 `join` 更新在线名单。渲染处身份从 `cfg.nickname` 改为独立 `nickname`/`avatar` state(故不触发连接 useEffect 重连)。旧消息保留发送时的名字
   - **修「外面改名进已存房间仍旧名」bug**：`goRoom()`(点「我的聊天」列表进房间)之前没把输入框名字落盘——只有点「进入」按钮走 `enter()` 才 `setNickname`，故先改名再点已存房间会读到旧名。现 `goRoom` 进窗前先 `setNickname(trim)`
   - **服务器保留时长 24h→12h**：`docs/chat-supabase-setup.sql` 第5节 `nobi_chat_cleanup()` 两处 `interval '12 hours'`(需在 Supabase SQL Editor 重跑该函数定义生效)
+- **v0.2.11**：
+  - **用户可见叫法改伪装名**（低调用）：工具菜单 `📺 看球小窗`→`🌐 浏览窗`、`💬 聊天`→`📝 便签`；同步改了浮窗标题/底部说明、状态提示「看球搜索引擎」、直开窗标题「看球（直开外链）→浏览窗（外部网页）」、快捷键冲突报错、`nav` 标签「换台/搜索→地址栏/搜索」。**仅改用户可见字符串，代码内部/注释仍用「看球」为该子系统名**(grep `看球` 改前先分清是不是字面量)
+  - **托盘菜单加「📝 便签」**：`lib.rs` 新增 `open_chat_launcher()`(等价前端 openChatWindow，主窗在托盘也能开聊天启动器)，托盘项 id `note`；托盘看球项也改 `🌐 浏览窗（上次的页）`(id 仍 `watch`)
 
 ## 开机自启
 

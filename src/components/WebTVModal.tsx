@@ -20,7 +20,7 @@ const ACTION_LABEL: Record<string, string> = {
   through: "点击穿透",
   zoomOut: "页面缩小",
   zoomIn: "页面放大",
-  nav: "换台 / 搜索",
+  nav: "地址栏 / 搜索",
   back: "网页后退",
   forward: "网页前进",
   mute: "静音",
@@ -146,7 +146,7 @@ export default function WebTVModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>📺 看球小窗</h3>
+        <h3>🌐 浏览窗</h3>
         <p className="modal-hint">无边框置顶小窗直开网页，登录 / 全屏正常。</p>
         <div className="webtv-pill">
           <span className="webtv-pill-icon">
@@ -209,7 +209,7 @@ export default function WebTVModal({
           ))}
         </div>
         <p className="modal-hint webtv-note">
-          变淡/变浓、页面缩放可按住连调；老板键藏起会顺带静音。快捷键只在看球窗可见时占用，
+          变淡/变浓、页面缩放可按住连调；老板键藏起会顺带静音。快捷键只在浏览窗可见时占用，
           藏起 / 全关即归还系统（藏起后别的软件能照常用）。
         </p>
 
