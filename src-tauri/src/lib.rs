@@ -491,6 +491,36 @@ fn flash_taskbar(app: &tauri::AppHandle, label: &str) {
     }
 }
 
+/// 停掉主窗 + 所有聊天窗的任务栏闪烁（已读时调用）。FLASHW_TIMERNOFG 是"闪到前台为止"，
+/// 但读消息常发生在聊天窗(主窗没被带到前台)，所以得主动 FLASHW_STOP 停它。
+#[cfg(windows)]
+fn stop_flash(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    use windows::Win32::UI::WindowsAndMessaging::{FlashWindowEx, FLASHWINFO, FLASHW_STOP};
+    let mut labels: Vec<String> = vec!["main".to_string()];
+    for (l, _) in app.webview_windows() {
+        if is_chat_label(&l) {
+            labels.push(l);
+        }
+    }
+    for l in labels {
+        if let Some(w) = app.get_webview_window(&l) {
+            if let Ok(hwnd) = w.hwnd() {
+                let mut fi = FLASHWINFO {
+                    cbSize: std::mem::size_of::<FLASHWINFO>() as u32,
+                    hwnd,
+                    dwFlags: FLASHW_STOP,
+                    uCount: 0,
+                    dwTimeout: 0,
+                };
+                unsafe {
+                    let _ = FlashWindowEx(&mut fi);
+                }
+            }
+        }
+    }
+}
+
 /// 收到一条未读（主窗后台订阅调用）：未读 +1、托盘红点 + 任务栏闪烁(label 群窗优先)。
 #[cfg(desktop)]
 #[tauri::command]
@@ -509,6 +539,8 @@ fn chat_clear_unread(app: tauri::AppHandle) {
     use std::sync::atomic::Ordering;
     CHAT_UNREAD.store(0, Ordering::Relaxed);
     update_tray_unread(&app);
+    #[cfg(windows)]
+    stop_flash(&app);
 }
 
 /// 把窗口从 Alt+Tab 切换器与任务栏里隐去（加 WS_EX_TOOLWINDOW、去 WS_EX_APPWINDOW）。
@@ -1599,6 +1631,8 @@ pub fn run() {
             nmt::nmt_status,
             nmt::download_nmt_models,
             selection_translate::close_selection_translate_window,
+            selection_translate::get_selection_translate_enabled,
+            selection_translate::set_selection_translate_enabled,
             // board
             board::list_boards,
             board::create_board,

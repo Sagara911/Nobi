@@ -47,6 +47,12 @@ export const chatSetOpacityKey = (which: "down" | "up", accel: string) =>
 export const getAutostart = () => autostartIsEnabled();
 export const setAutostart = (on: boolean) =>
   on ? autostartEnable() : autostartDisable();
+
+// 划词右键翻译总开关
+export const getSelectionTranslateEnabled = () =>
+  invoke<boolean>("get_selection_translate_enabled");
+export const setSelectionTranslateEnabled = (enabled: boolean) =>
+  invoke<void>("set_selection_translate_enabled", { enabled });
 // 聊天未读提醒（托盘红点 + 任务栏闪烁）：来新消息 +1（label=对应群窗，没开则闪主窗）/ 看了清零
 export const chatBumpUnread = (label?: string) =>
   invoke<void>("chat_bump_unread", { label });

@@ -54,13 +54,17 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **v0.2.3–0.2.7 通知/@ 完善**：
   - 任务栏**红角标**(`set_main_overlay`/`set_overlay_icon`)曾在 v0.2.4 加过，**v0.2.8 按用户要求移除**——任务栏未读只保留 `flash_taskbar` 闪烁；常驻红点提示只剩**系统托盘图标**那个(`badged_tray_icon`，主窗收进托盘时的兜底)
   - **未读判定改用窗口可见性**：主窗后台订阅收到消息时直接查该群窗 `isFocused()+isVisible()`(需 `default.json` 的 `is-focused`/`is-visible` 权限)，只有"打开+聚焦+可见"才不提醒——关窗/隐藏(boss键)/在后台都正常提醒。**废弃了原先靠 activeConn 标记判断的做法**(关窗时标记残留→误判"还在看"→提醒全哑)
-  - `flash_taskbar`：群窗可见才闪它，否则(关/藏)闪主窗
+  - `flash_taskbar`：群窗可见才闪它，否则(关/藏)闪主窗；闪用 `FLASHW_TIMERNOFG`(闪到前台为止)，但读消息常在聊天窗发生(主窗没到前台)，故 `chat_clear_unread` 里 `stop_flash`(FLASHW_STOP)主动停掉主窗+所有聊天窗的闪烁(v0.2.9)
   - **@候选按 clientId 去重**取每人最新名字(改过名只显示当前名、人数准；旧消息保留旧名不动)
   - Ctrl+V 粘贴图片/视频发送；取消隐藏后 `.chat-list` 手动接管滚轮(hover 即滚)；透明度 Alt+V/B 长按连调
 
 ## 开机自启
 
 `tauri-plugin-autostart`（desktop dep + setup 内 desktop-gated 注册 + `capabilities/default.json` 的 `autostart:*` 权限）。前端 `api.getAutostart/setAutostart`（包 `@tauri-apps/plugin-autostart`），工具→⚙设置→开机自启（菜单 `checked` 勾选态）。Windows 走 HKCU Run，无需管理员；**dev 登记调试 exe 路径，安装版才准**
+
+## 划词右键翻译开关（v0.2.9）
+
+工具→⚙设置→**划词右键翻译**（菜单 `checked`）。`selection_translate.rs` 的 `SELECTION_TRANSLATE_ENABLED`(AtomicBool)门控 `handle_right_click`——关掉后 WH_MOUSE_LL 钩子仍跑但右键不弹翻译+藏掉浮窗；存 `selection_translate.json`，`start()` 先 `load_enabled` 再挂钩。命令 `get/set_selection_translate_enabled`，前端 `api.getSelectionTranslateEnabled/setSelectionTranslateEnabled`
 
 ## 已知的坑
 

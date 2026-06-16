@@ -49,12 +49,64 @@ const RIGHT_CLICK_DEBOUNCE_MS: u64 = 160;
 #[cfg(windows)]
 const CLIP_SENTINEL: &str = "__NOBI_SELECTION_TRANSLATE_SENTINEL__";
 
+/// 划词右键翻译总开关（默认开）。钩子常驻但只在开启时动作；存 selection_translate.json。
+static SELECTION_TRANSLATE_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(true);
+
+fn st_prefs_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("selection_translate.json"))
+}
+
+fn load_enabled(app: &tauri::AppHandle) {
+    if let Some(p) = st_prefs_path(app) {
+        if let Ok(txt) = std::fs::read_to_string(&p) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                if let Some(b) = v.get("enabled").and_then(|x| x.as_bool()) {
+                    SELECTION_TRANSLATE_ENABLED.store(b, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        }
+    }
+}
+
+fn save_enabled(app: &tauri::AppHandle, enabled: bool) {
+    if let Some(p) = st_prefs_path(app) {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, serde_json::json!({ "enabled": enabled }).to_string());
+    }
+}
+
 pub fn start(app: tauri::AppHandle) {
+    load_enabled(&app);
+
     #[cfg(windows)]
     start_windows(app);
 
     #[cfg(not(windows))]
     let _ = app;
+}
+
+/// 读划词翻译开关（前端展示用）。
+#[tauri::command]
+pub fn get_selection_translate_enabled() -> bool {
+    SELECTION_TRANSLATE_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 开/关划词翻译。关掉后鼠标钩子还在跑但不再弹翻译；关时顺手藏掉已显的浮窗。
+#[tauri::command]
+pub fn set_selection_translate_enabled(app: tauri::AppHandle, enabled: bool) {
+    SELECTION_TRANSLATE_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    save_enabled(&app, enabled);
+    if !enabled {
+        if let Some(w) = app.get_webview_window("selection-translate") {
+            let _ = w.hide();
+        }
+    }
 }
 
 #[tauri::command]
@@ -149,6 +201,9 @@ fn is_point_in_translate_window(w: &tauri::WebviewWindow, x: i32, y: i32) -> boo
 
 #[cfg(windows)]
 fn handle_right_click(x: i32, y: i32, event_ms: u64) {
+    if !SELECTION_TRANSLATE_ENABLED.load(Ordering::Relaxed) {
+        return; // 总开关关闭：钩子不动作
+    }
     let last = LAST_RIGHT_CLICK_MS.load(Ordering::Relaxed);
     if event_ms.saturating_sub(last) < RIGHT_CLICK_DEBOUNCE_MS {
         return;
