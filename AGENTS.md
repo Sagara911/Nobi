@@ -42,12 +42,12 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **窗口** `src/components/ChatWindow.tsx`：`main.tsx` 按 `#chat` 路由；URL `?profile=&room=` → 房间窗（label `chat-<profile>-<room>`，**可并排多群**），无参 → 启动器（label `chat`，进入后自动关）。启动器顶部「我的聊天」= 已加入连接列表（持久化，微信式点进去）。`App.tsx` 的 openChatWindow/openChatRoom/sendAssetToFriend
 - **凭据内置**：`.env.local`（`*.local` 已 gitignore，**不进仓库**）放 `VITE_CHAT_SUPABASE_URL`/`VITE_CHAT_SUPABASE_ANON_KEY`，Vite 编译打进包→`CREDENTIALS_BAKED` 时有「内置后端」连接。**改 .env 必须重启 dev**
 - **发媒体**：文字/图片/**视频**(kind 字段；拖图或视频进群窗，或素材右键「发给朋友」→ outbox 按 profile+room tag → 发活跃连接)。**Emoji 面板 + 表情包收藏**（素材右键「收藏为表情包」，本地路径存 localStorage，发时 re-upload，不受 24h 清理影响）。outbox 跨窗口靠 localStorage **轮询**（WebView2 多窗 storage 事件不可靠）。Supabase 免费档单文件约 50MB 上限
-- **头像**：默认彩色首字（确定性），可选 emoji / **上传图片** / 素材右键「设为聊天头像」。随消息 `avatar` 字段带走（data URL，需表有 `avatar` 列）
+- **头像**：默认彩色首字（确定性），可选 emoji / **上传图片** / 素材右键「设为聊天头像」。随消息 `avatar` 字段带走（data URL，需表有 `avatar` 列）。**v0.2.10 起房间窗内也能改名/换头像**（右上角头像钮）
 - **未读提醒**：主窗后台订阅所有已加入连接，没在看的群来消息 → **托盘红点+数字**（`lib.rs` `CHAT_UNREAD`/`badged_tray_icon`/`chat_bump_unread`/`chat_clear_unread`），开/聚焦聊天窗清零。聊天窗全关也能提醒
 - **全局快捷键（随聊天窗占用/全关归还，均可改键带冲突检测，存 `chat_prefs.json`）**：老板键 `Alt+C` 藏/显所有聊天窗（`toggle_chat_windows`）；透明度 `Alt+V` 调淡 / `Alt+B` 调浓（`CHAT_OPACITY`+Win32 `SetLayeredWindowAttributes`，跨重启记忆、新窗继承）。命令 `chat_get/set_boss_key`、`chat_get_opacity_keys/chat_set_opacity_key`
 - **看球窗隐藏**：`lib.rs` `hide_from_alt_tab`（Win32 `WS_EX_TOOLWINDOW`）让直开窗不在 Alt+Tab/任务栏出现
 - **权限** `capabilities/chat-window.json`：`["chat","chat-*"]` + create-webview-window
-- **Supabase 建表** `docs/chat-supabase-setup.sql`：messages 表（含 `avatar` 列）+ RLS（anon 读写）+ Realtime + chat-assets 公开桶 + **24h pg_cron 阅后即焚**（`nobi-chat-cleanup` 每小时删超 24h 消息/图片，存量不涨、长期免费）。**选头像/emoji 前用户须跑 `alter table messages add column if not exists avatar text;`**
+- **Supabase 建表** `docs/chat-supabase-setup.sql`：messages 表（含 `avatar` 列）+ RLS（anon 读写）+ Realtime + chat-assets 公开桶 + **12h pg_cron 阅后即焚**（`nobi-chat-cleanup` 每小时删超 12h 消息/图片，存量不涨、长期免费；保留时长=改函数里两处 `interval`，v0.2.10 从 24h 改 12h）。**选头像/emoji 前用户须跑 `alter table messages add column if not exists avatar text;`**
 - 依赖：`@supabase/supabase-js`。**发图/视频/多服务器真机端到端未最终确认**
 - **v0.2.2 新增**：@提及(输入 `@` 弹候选=聊过天的人+所有人，`renderBody` 高亮，@到自己整条 `at-me` 高亮)；任务栏闪烁提醒(`flash_taskbar` FlashWindowEx，`chat_bump_unread(label)` 闪对应群窗/没开闪主窗)；Ctrl+V 粘贴图片/视频直接发；取消隐藏后滚轮失效 → `.chat-list` 手动接管 wheel；透明度 Alt+V/B **长按连调**(`CHAT_HOLD`/`CHAT_HOLD_GEN` 重复线程，同看球)
 - **画板导出 PNG 修复**(`src/board/BoardCanvas.tsx`)：①原浏览器 `<a download>` 兜底在 WebView2 会存出假 png(488B HTML)，改为原生 saveDialog→saveFile→`revealItemInDir` 打开文件夹，仅纯浏览器预览才用 `<a download>`；②离屏 Konva Stage 不能放 `display:none` 容器(渲染空画布→toDataURL 空)，改屏外定位 `left:-100000px`
@@ -57,6 +57,10 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
   - `flash_taskbar`：群窗可见才闪它，否则(关/藏)闪主窗；闪用 `FLASHW_TIMERNOFG`(闪到前台为止)，但读消息常在聊天窗发生(主窗没到前台)，故 `chat_clear_unread` 里 `stop_flash`(FLASHW_STOP)主动停掉主窗+所有聊天窗的闪烁(v0.2.9)
   - **@候选按 clientId 去重**取每人最新名字(改过名只显示当前名、人数准；旧消息保留旧名不动)
   - Ctrl+V 粘贴图片/视频发送；取消隐藏后 `.chat-list` 手动接管滚轮(hover 即滚)；透明度 Alt+V/B 长按连调
+- **v0.2.10**：
+  - **房间窗内改名/换头像**：群窗右上角头像钮(`chat-me`)开内嵌编辑区(`chat-idedit`)，改名+选 emoji/上传图/默认。**不重连即时生效**——后端新增可选能力 `ChatBackend.updateIdentity(nickname, avatar?)`，只改 `this.cfg` 身份字段(房间/订阅不依赖昵称)，之后发的消息即用新身份；自建后端额外补发一帧 `join` 更新在线名单。渲染处身份从 `cfg.nickname` 改为独立 `nickname`/`avatar` state(故不触发连接 useEffect 重连)。旧消息保留发送时的名字
+  - **修「外面改名进已存房间仍旧名」bug**：`goRoom()`(点「我的聊天」列表进房间)之前没把输入框名字落盘——只有点「进入」按钮走 `enter()` 才 `setNickname`，故先改名再点已存房间会读到旧名。现 `goRoom` 进窗前先 `setNickname(trim)`
+  - **服务器保留时长 24h→12h**：`docs/chat-supabase-setup.sql` 第5节 `nobi_chat_cleanup()` 两处 `interval '12 hours'`(需在 Supabase SQL Editor 重跑该函数定义生效)
 
 ## 开机自启
 

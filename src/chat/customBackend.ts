@@ -202,6 +202,22 @@ export class CustomServerBackend implements ChatBackend {
     );
   }
 
+  updateIdentity(nickname: string, avatar?: string): void {
+    this.cfg = { ...this.cfg, nickname, avatar };
+    // 在线则补发一帧 join，让服务器更新该连接的昵称（presence/在线名单用）
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(
+        JSON.stringify({
+          type: "join",
+          room: this.cfg.room,
+          nickname,
+          clientId: this.cfg.clientId,
+          token: this.cfg.serverToken || undefined,
+        }),
+      );
+    }
+  }
+
   async history(limit: number): Promise<ChatMessage[]> {
     try {
       const u = `${this.httpBase}/history?room=${encodeURIComponent(

@@ -149,6 +149,10 @@ export class SupabaseBackend implements ChatBackend {
     if (error) throw new Error(error.message);
   }
 
+  updateIdentity(nickname: string, avatar?: string): void {
+    this.cfg = { ...this.cfg, nickname, avatar };
+  }
+
   async history(limit: number): Promise<ChatMessage[]> {
     const { data, error } = await this.client
       .from(TABLE)

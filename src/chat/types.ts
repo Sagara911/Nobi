@@ -92,6 +92,12 @@ export interface ChatBackend {
   /** 发一张图：实现负责把图上传到自己的存储，再广播一条 image 消息。 */
   sendAsset(asset: OutgoingAsset, caption?: string): Promise<void>;
 
+  /**
+   * 改昵称 / 头像，不重连——之后发出的消息即用新身份（房间/订阅不依赖昵称）。
+   * 可选能力；UI 调用前用 `?.` 兜底。旧消息保留发送时的名字，不回改。
+   */
+  updateIdentity?(nickname: string, avatar?: string): void;
+
   /** 拉最近 limit 条历史，按时间升序。不支持则返回 []。 */
   history(limit: number): Promise<ChatMessage[]>;
 

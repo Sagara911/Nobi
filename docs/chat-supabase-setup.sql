@@ -65,19 +65,19 @@ create policy "chat assets public read"
   on storage.objects for select
   using (bucket_id = 'chat-assets');
 
--- ===== 5. 24 小时自动清理（阅后即焚，记录不累积 → 长期卡在免费额度内）=====
--- 超过 24h 的消息和图片每小时自动删一次。改保留时长 = 改下面两个 interval；
--- 改频率 = 改 '0 * * * *'（每小时整点）。代价：超过 24h 的历史对所有人消失。
+-- ===== 5. 12 小时自动清理（阅后即焚，记录不累积 → 长期卡在免费额度内）=====
+-- 超过 12h 的消息和图片每小时自动删一次。改保留时长 = 改下面两个 interval；
+-- 改频率 = 改 '0 * * * *'（每小时整点）。代价：超过 12h 的历史对所有人消失。
 create extension if not exists pg_cron;
 
 create or replace function public.nobi_chat_cleanup()
 returns void language plpgsql security definer as $$
 begin
   delete from public.messages
-    where created_at < now() - interval '24 hours';
+    where created_at < now() - interval '12 hours';
   delete from storage.objects
     where bucket_id = 'chat-assets'
-      and created_at < now() - interval '24 hours';
+      and created_at < now() - interval '12 hours';
 end; $$;
 
 select cron.unschedule('nobi-chat-cleanup')

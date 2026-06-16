@@ -190,6 +190,13 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     profile ? resolveConfig(profile, room) : null,
   );
 
+  // 身份（昵称/头像）单独存：可在房间内现改，不动 cfg 故不会触发重连。
+  // 渲染处一律用这两个 state（而非 cfg.nickname），改完即时反映。
+  const [nickname, setNick] = useState<string>(() => getNickname());
+  const [avatar, setAva] = useState<string>(() => getAvatar());
+  const [editId, setEditId] = useState(false);
+  const avaFileRef = useRef<HTMLInputElement | null>(null);
+
   const [status, setStatus] = useState<ConnStatus>("idle");
   const [statusDetail, setStatusDetail] = useState<string>("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -386,6 +393,28 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     );
   }
 
+  // 房间内改名/换头像：落盘（全局身份）+ 即时告诉后端（之后发的消息用新身份）。
+  const applyName = (v: string) => {
+    setNick(v);
+    setNickname(v);
+    backendRef.current?.updateIdentity?.(v.trim(), avatar);
+  };
+  const applyAvatar = (a: string) => {
+    setAva(a);
+    setAvatar(a);
+    backendRef.current?.updateIdentity?.(nickname.trim(), a);
+  };
+  const onPickAvaFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // 允许重选同一文件
+    if (!f) return;
+    try {
+      applyAvatar(await fileToAvatar(f));
+    } catch {
+      /* ignore */
+    }
+  };
+
   const handleSend = async () => {
     const text = draft.trim();
     const backend = backendRef.current;
@@ -463,8 +492,75 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
           <span className={`chat-dot chat-dot-${status}`} title={statusDetail || STATUS_TEXT[status]} />
           <span className="chat-status">{STATUS_TEXT[status]}</span>
         </div>
-        <button className="chat-gear" title="发起/加入别的群" onClick={() => void openLauncherWindow()}>＋</button>
+        <div className="chat-head-actions">
+          <button
+            className={`chat-me${editId ? " on" : ""}`}
+            title="改名 / 换头像"
+            onClick={() => setEditId((v) => !v)}
+          >
+            <MsgAvatar name={nickname} avatar={avatar} />
+          </button>
+          <button className="chat-gear" title="发起/加入别的群" onClick={() => void openLauncherWindow()}>＋</button>
+        </div>
       </header>
+
+      {editId && (
+        <div className="chat-idedit">
+          <label className="chat-field">
+            <span>我的名字</span>
+            <input
+              value={nickname}
+              onChange={(e) => applyName(e.target.value)}
+              placeholder="朋友看到的名字"
+              autoFocus
+            />
+          </label>
+          <div className="chat-ava-pick">
+            <button
+              type="button"
+              className={`chat-ava-opt ${!avatar ? "on" : ""}`}
+              title="默认（彩色首字）"
+              onClick={() => applyAvatar("")}
+            >
+              <MsgAvatar name={nickname || "?"} />
+            </button>
+            <button
+              type="button"
+              className="chat-ava-opt chat-ava-upload"
+              title="上传图片"
+              onClick={() => avaFileRef.current?.click()}
+            >
+              ＋
+            </button>
+            {isImageAvatar(avatar) && (
+              <button type="button" className="chat-ava-opt on" title="当前自定义头像">
+                <img className="chat-ava-mini" src={avatar} alt="" />
+              </button>
+            )}
+            {AVATAR_CHOICES.map((a) => (
+              <button
+                key={a}
+                type="button"
+                className={`chat-ava-opt ${avatar === a ? "on" : ""}`}
+                onClick={() => applyAvatar(a)}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+          <input
+            ref={avaFileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={onPickAvaFile}
+          />
+          <div className="chat-idedit-foot">
+            <span className="chat-hint">改完即时生效；已发出的旧消息保留当时的名字。</span>
+            <button type="button" onClick={() => setEditId(false)}>完成</button>
+          </div>
+        </div>
+      )}
 
       {statusDetail && status === "error" && <div className="chat-error">{statusDetail}</div>}
       {notice && (
@@ -479,7 +575,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
         )}
         {messages.map((m) => {
           const mine = m.clientId === cfg.clientId;
-          const atMe = !mine && mentionsMe(m.body, cfg.nickname);
+          const atMe = !mine && mentionsMe(m.body, nickname);
           return (
             <div key={m.id} className={`chat-row ${mine ? "mine" : "theirs"}`}>
               <MsgAvatar name={m.sender} avatar={m.avatar} />
@@ -494,7 +590,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
                   {m.kind === "video" && m.assetUrl ? (
                     <video className="chat-video" src={m.assetUrl} controls preload="metadata" />
                   ) : null}
-                  {m.body ? <div className="chat-text">{renderBody(m.body, cfg.nickname)}</div> : null}
+                  {m.body ? <div className="chat-text">{renderBody(m.body, nickname)}</div> : null}
                 </div>
                 <div className="chat-time">{new Date(m.createdAt).toLocaleTimeString().slice(0, 5)}</div>
               </div>
@@ -565,7 +661,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
         </button>
         <textarea
           value={draft}
-          placeholder={`以 ${cfg.nickname || "我"} 的身份发消息…（@ 提到某人）`}
+          placeholder={`以 ${nickname || "我"} 的身份发消息…（@ 提到某人）`}
           onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => {
             if (mentionQ !== null && mentionList.length) {
@@ -612,8 +708,12 @@ function ChatLauncher() {
   const [conns, setConns] = useState<JoinedConn[]>(() => getJoinedConns());
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  // 点已记住的房间直接进（昵称/头像/连接都已持久化，无需重填），并关掉启动器
+  // 点已记住的房间直接进（连接已持久化），并关掉启动器。
+  // 注意：必须先把当前输入框里的名字落盘——否则在这里改了名直接点已存房间，
+  // 房间窗 resolveConfig 读到的还是旧名字（头像在 pickAvatar 里已即时落盘）。
   const goRoom = (profileId: string, room: string) => {
+    const n = nickname.trim();
+    if (n) setNickname(n);
     void openConnWindow(profileId, room).then(() => {
       getCurrentWebviewWindow().close().catch(() => {});
     });
