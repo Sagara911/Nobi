@@ -144,12 +144,8 @@ pub fn import_blob(
         return Err(format!("不支持的格式：{ext}"));
     }
 
-    let dir = app
-        .path()
-        .picture_dir()
-        .map(|d| d.join("Nobi"))
-        .or_else(|_| app.path().app_data_dir().map(|d| d.join("collected")))
-        .map_err(|e| e.to_string())?;
+    // 保存目录走用户设置（默认 图片\Nobi）
+    let dir = crate::settings::import_dir(&app);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let stem = std::path::Path::new(&safe)

@@ -70,6 +70,38 @@ pub fn get_settings(app: tauri::AppHandle) -> Result<AiSettings, String> {
     })
 }
 
+/// 素材保存目录：用户设置 > 默认（图片\Nobi）。粘贴/拖入/落盘导入的素材都存这。
+pub fn import_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
+    use tauri::Manager;
+    if let Some(p) = get_setting(app, "import_dir") {
+        return std::path::PathBuf::from(p);
+    }
+    app.path()
+        .picture_dir()
+        .map(|d| d.join("Nobi"))
+        .or_else(|_| app.path().app_data_dir().map(|d| d.join("collected")))
+        .unwrap_or_else(|_| std::path::PathBuf::from("collected"))
+}
+
+/// 读当前素材保存路径（设置面板回显，含默认值）
+#[tauri::command]
+pub fn get_import_dir(app: tauri::AppHandle) -> String {
+    import_dir(&app).to_string_lossy().to_string()
+}
+
+/// 设素材保存路径（留空=恢复默认）
+#[tauri::command]
+pub fn set_import_dir(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let conn = open_db(&app)?;
+    conn.execute(
+        "INSERT INTO settings(key,value) VALUES('import_dir',?1)
+         ON CONFLICT(key) DO UPDATE SET value=?1",
+        rusqlite::params![path.trim()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// 保存 AI 配置（留空的项会回退到环境变量/默认值）
 #[tauri::command]
 pub fn set_settings(app: tauri::AppHandle, settings: AiSettingsIn) -> Result<(), String> {

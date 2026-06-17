@@ -12,6 +12,7 @@ import Inspector from "./components/Inspector";
 import TagTree from "./components/TagTree";
 import Section from "./components/Section";
 import BoardCanvas, { type BoardEditor } from "./Board";
+import DocEditor from "./components/DocEditor";
 
 /** 文件夹列表超过该数量时折叠显示 */
 const FOLDER_CAP = 8;
@@ -587,9 +588,14 @@ function BoardPanel(_p: IDockviewPanelProps) {
   );
 }
 
+function DocPanel(_p: IDockviewPanelProps) {
+  return <DocEditor />;
+}
+
 export const DOCK_COMPONENTS = {
   library: LibraryPanel,
   grid: GridPanel,
   inspector: InspectorPanel,
   board: BoardPanel,
+  doc: DocPanel,
 };

@@ -82,6 +82,15 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **截图**：自研框选浮层试过但**放弃**（本机 WebView2 透明/新建窗有黑屏+迟滞，反复修不顺）。改用**系统 Win+Shift+S → 画板 Ctrl+V**：画板 `onPaste` 本就支持剪贴板图片(落盘入库+上板)，零开发。相关自研代码(screenshot.rs/#shot/Ctrl+Alt+S)已全删
 - **图层顺序**：画板早有 `store.reorder(ids,"front|back|forward|backward")`，键 `]`上移/`[`下移/`Shift+]`置顶/`Shift+[`置底（不限修饰键，Alt+] 也触发）+ 右键菜单
 
+### v0.2.13 增改
+- **文档编辑器（Word 式，自研非内嵌）**：dock 面板 `doc`（`DocEditor.tsx`，TipTap 全功能 StarterKit+Underline+TextStyle+Color），窗口(W)→文档。多文档存 SQLite `docs` 表（`docs.rs` 仿 board.rs：list/create/rename/delete/save/load_doc，内容为 HTML），打字停 0.7s 防抖自动存。颜色当前值描白圈反馈。**下一步要做思维导图(xmind)自研节点画布**
+- **浏览窗/便签从 Alt+Tab+任务栏(含悬停预览)彻底隐去**：`WS_EX_TOOLWINDOW`（Tauri skipTaskbar 只去任务栏不去 Alt+Tab）。`hide_from_alt_tab` 加 `SWP_FRAMECHANGED` 即时生效；浏览窗 `open_direct_window` 直接可见建窗后立即打标记（隐藏建窗→show 会卡 WebView2 冷启动）；便签前端 `visible:false` 建窗 + 窗口 mount 调 `stealth_show`（Rust 命令：透明态先套 alpha 再 show、打标记），老板键 show 后也补打。便签首开**别在内容加载前打 layered alpha**（白屏坑）——`stealth_show` 在 mount 后调所以安全
+- **素材保存路径**：编辑→⚙设置→📁素材保存路径（`SavePathModal.tsx`）。`settings::import_dir`（用户设置 `import_dir` > 默认 图片\Nobi）+ `get/set_import_dir` 命令；`import_blob` 改用它。粘贴/拖入/画板存图落这
+- **设置菜单挪到 编辑(E)**（原在工具(T)）：开机自启/划词翻译/素材保存路径
+- **来消息闪烁改只闪任务栏**：`flash_taskbar` 由 `FLASHW_ALL` 改 `FLASHW_TRAY`——`FLASHW_ALL` 含 `FLASHW_CAPTION` 会闪窗口标题栏/边框
+- **浏览窗几何存 outer_size**（原 inner_size）：Alt+3 开标题栏时内尺寸被吃掉变小，存内尺寸→开关-关窗-重开循环窗口越来越扁；外尺寸稳定
+- **已知正常**：浏览窗首开 Alt+3 迟钝要按两次——`set_decorations` 异步重操作 vs WebView2 冷启动抢资源，引擎热后正常，非 bug
+
 ## 已知的坑
 
 - **cargo 文件锁**：`npm run tauri dev` 的 watcher 与任何并行 cargo/构建会抢锁，可能把 watcher 抢死（vite 活着但 Rust 不再重编译、应用不重启）。规则：**dev 跑着时不要并行跑 cargo build/check**；watcher 死了就重启 dev

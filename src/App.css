@@ -519,8 +519,8 @@ video.preview { aspect-ratio: auto; max-height: 300px; }
 .tag-input:focus { background: var(--surface-3); }
 .tag-input::placeholder { color: var(--text-3); }
 
-.palette { display: flex; gap: 6px; }
-.swatch { width: 24px; height: 24px; border-radius: 50%; }
+.palette { display: flex; gap: 6px; flex-wrap: wrap; }
+.swatch { flex: 0 0 24px; width: 24px; height: 24px; aspect-ratio: 1; border-radius: 50%; }
 
 /* AI 操作 */
 .ai-actions { display: flex; flex-direction: column; gap: 4px; }

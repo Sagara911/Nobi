@@ -93,6 +93,12 @@ pub fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
             snapshot TEXT,
             updated_at INTEGER
         );
+        CREATE TABLE IF NOT EXISTS docs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            content TEXT,
+            updated_at INTEGER
+        );
         CREATE TABLE IF NOT EXISTS collections (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,

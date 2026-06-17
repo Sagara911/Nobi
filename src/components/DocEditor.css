@@ -1,0 +1,205 @@
+/* 文档编辑器面板。深色 UI + 居中"纸张"。 */
+.doc-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg, #0c0c0d);
+  color: var(--text-1, #ececee);
+  min-height: 0;
+}
+
+.doc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, #2a2a30);
+  flex: none;
+}
+.doc-pick {
+  max-width: 180px;
+  background: var(--panel-2, #18181c);
+  color: var(--text-1, #ececee);
+  border: 1px solid var(--border, #2a2a30);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+.doc-title {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-1, #ececee);
+  font: 600 15px system-ui, "Microsoft YaHei", sans-serif;
+  padding: 5px 4px;
+  outline: none;
+}
+.doc-title:focus {
+  border-bottom-color: var(--accent, #e3b04b);
+}
+.doc-saved {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-3, #5d5d64);
+  min-width: 48px;
+  text-align: right;
+}
+.doc-act {
+  flex: none;
+  background: var(--panel-2, #18181c);
+  border: 1px solid var(--border, #2a2a30);
+  color: var(--text-1, #ececee);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.doc-act:hover {
+  border-color: var(--accent, #e3b04b);
+}
+.doc-act.danger:hover {
+  border-color: #e03131;
+  color: #ff9b9b;
+}
+
+/* 工具栏 */
+.doc-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border, #2a2a30);
+  background: var(--surface, #141417);
+  flex: none;
+}
+.doc-tb-btn {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-1, #ececee);
+  font-size: 13px;
+  cursor: pointer;
+}
+.doc-tb-btn:hover {
+  background: var(--panel-2, #18181c);
+}
+.doc-tb-btn.on {
+  background: #2f6fdd;
+  color: #fff;
+}
+.doc-tb-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.doc-tb-sel {
+  height: 26px;
+  background: var(--panel-2, #18181c);
+  color: var(--text-1, #ececee);
+  border: 1px solid var(--border, #2a2a30);
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 0 4px;
+}
+.doc-tb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border, #2a2a30);
+  margin: 0 4px;
+}
+.doc-colors {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.doc-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
+}
+.doc-color:hover {
+  transform: scale(1.18);
+}
+.doc-color.on {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px #000;
+}
+
+/* 纸张 */
+.doc-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 0 60px;
+  background: #0a0a0b;
+}
+.doc-page {
+  max-width: 760px;
+  margin: 0 auto;
+  background: #1b1b1f;
+  border: 1px solid var(--border, #2a2a30);
+  border-radius: 6px;
+  padding: 40px 52px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.doc-page .ProseMirror {
+  outline: none;
+  min-height: 60vh;
+  font: 15px/1.75 system-ui, "Microsoft YaHei", sans-serif;
+  color: #e6e6ea;
+}
+.doc-page .ProseMirror:focus {
+  outline: none;
+}
+.doc-page .ProseMirror h1 { font-size: 28px; font-weight: 700; margin: 18px 0 10px; }
+.doc-page .ProseMirror h2 { font-size: 22px; font-weight: 700; margin: 16px 0 8px; }
+.doc-page .ProseMirror h3 { font-size: 18px; font-weight: 600; margin: 14px 0 6px; }
+.doc-page .ProseMirror p { margin: 8px 0; }
+.doc-page .ProseMirror ul,
+.doc-page .ProseMirror ol { padding-left: 26px; margin: 8px 0; }
+.doc-page .ProseMirror blockquote {
+  border-left: 3px solid var(--accent, #e3b04b);
+  margin: 10px 0;
+  padding: 2px 14px;
+  color: #b9b9c0;
+}
+.doc-page .ProseMirror pre {
+  background: #0e0e10;
+  border: 1px solid var(--border, #2a2a30);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  overflow-x: auto;
+}
+.doc-page .ProseMirror code {
+  background: #0e0e10;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+}
+.doc-page .ProseMirror p.is-editor-empty:first-child::before {
+  content: "开始写…";
+  color: var(--text-3, #5d5d64);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

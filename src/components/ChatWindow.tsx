@@ -4,7 +4,7 @@
 // 只依赖 ChatBackend 抽象，不关心底层是 Supabase 还是自建服务器。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke as coreInvoke } from "@tauri-apps/api/core";
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import * as api from "../api";
 import {
@@ -74,6 +74,7 @@ async function openConnWindow(profileId: string, room: string) {
     minHeight: 360,
     resizable: true,
     dragDropEnabled: false, // 走 HTML5 拖放收桌面图片
+    visible: false, // 隐藏建窗，窗口 mount 后调 stealth_show 打 toolwindow 再显示（不进 Alt+Tab/任务栏）
   });
   win.once("tauri://error", () => {});
 }
@@ -91,6 +92,7 @@ async function openLauncherWindow() {
     width: 360,
     height: 520,
     resizable: true,
+    visible: false, // 同上，stealth_show 后再显示
   });
 }
 
@@ -179,6 +181,10 @@ export default function ChatWindow() {
   const params = urlParams();
   const room = params.get("room") || "";
   const profileId = params.get("profile") || "";
+  // 本窗是隐藏建出来的：mount 后打 WS_EX_TOOLWINDOW 标记再显示，便签不进 Alt+Tab/任务栏
+  useEffect(() => {
+    void coreInvoke("stealth_show").catch(() => {});
+  }, []);
   return room && profileId ? <ChatRoom profileId={profileId} room={room} /> : <ChatLauncher />;
 }
 

@@ -137,6 +137,10 @@ export const collectionAssetIds = (id: number) =>
 export const getSettings = () => invoke<AiCfg>("get_settings");
 export const setSettings = (settings: AiCfg) => invoke<void>("set_settings", { settings });
 
+// 素材保存路径（粘贴/拖入/落盘导入存哪；默认 图片\Nobi）
+export const getImportDir = () => invoke<string>("get_import_dir");
+export const setImportDir = (path: string) => invoke<void>("set_import_dir", { path });
+
 // ---- 翻译 / 术语库 ----
 export const translateText = (req: TranslationRequest) =>
   invoke<TranslationResult>("translate_text", { req });
@@ -168,6 +172,21 @@ export const saveBoard = (id: number, snapshot: string) =>
 export const loadBoard = (id: number) => invoke<string | null>("load_board", { id });
 export const saveFile = (path: string, dataB64: string) =>
   invoke<void>("save_file", { path, dataB64 });
+
+// ---- 文档（Word 式富文本，内容是 TipTap 的 HTML；权威副本在 SQLite docs 表） ----
+export interface DocMeta {
+  id: number;
+  name: string;
+  updated_at: number;
+}
+export const listDocs = () => invoke<DocMeta[]>("list_docs");
+export const createDoc = (name: string) => invoke<number>("create_doc", { name });
+export const renameDoc = (id: number, name: string) =>
+  invoke<void>("rename_doc", { id, name });
+export const deleteDoc = (id: number) => invoke<void>("delete_doc", { id });
+export const saveDoc = (id: number, name: string, content: string) =>
+  invoke<void>("save_doc", { id, name, content });
+export const loadDoc = (id: number) => invoke<string | null>("load_doc", { id });
 
 // ---- 采集 / 接入 ----
 export const exportExtension = () => invoke<string>("export_extension");

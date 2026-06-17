@@ -15,6 +15,7 @@ mod board;
 mod collect;
 mod collections;
 mod db;
+mod docs;
 mod library;
 mod mcp_api;
 mod nmt;
@@ -50,11 +51,23 @@ fn open_chat_launcher(app: &tauri::AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         use tauri::{WebviewUrl, WebviewWindowBuilder};
-        let _ = WebviewWindowBuilder::new(&app, "chat", WebviewUrl::App("index.html#chat".into()))
+        let mut b = WebviewWindowBuilder::new(&app, "chat", WebviewUrl::App("index.html#chat".into()))
             .title("Nobi 聊天")
             .inner_size(340.0, 420.0)
-            .resizable(true)
-            .build();
+            .resizable(true);
+        // 隐藏建窗 → 打 WS_EX_TOOLWINDOW → 显示：便签不进 Alt+Tab/任务栏（含悬停预览）
+        #[cfg(windows)]
+        {
+            b = b.visible(false);
+        }
+        if let Ok(win) = b.build() {
+            #[cfg(windows)]
+            {
+                hide_from_alt_tab(&win);
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }
     });
 }
 
@@ -253,6 +266,8 @@ fn toggle_chat_windows(app: &tauri::AppHandle) {
             let _ = w.hide();
         } else {
             let _ = w.show();
+            #[cfg(windows)]
+            hide_from_alt_tab(w); // show 可能把窗重新塞回 Alt+Tab，补一刀（同看球老板键）
             let _ = w.set_focus();
         }
     }
@@ -693,7 +708,7 @@ fn update_tray_unread(app: &tauri::AppHandle) {
 fn flash_taskbar(app: &tauri::AppHandle, label: &str) {
     use tauri::Manager;
     use windows::Win32::UI::WindowsAndMessaging::{
-        FlashWindowEx, FLASHWINFO, FLASHW_ALL, FLASHW_TIMERNOFG,
+        FlashWindowEx, FLASHWINFO, FLASHW_TIMERNOFG, FLASHW_TRAY,
     };
     // 群窗存在且可见才闪它；关了/藏起(没可见任务栏按钮)就闪主窗
     let win = match app.get_webview_window(label) {
@@ -702,10 +717,11 @@ fn flash_taskbar(app: &tauri::AppHandle, label: &str) {
     };
     if let Some(w) = win {
         if let Ok(hwnd) = w.hwnd() {
+            // 只闪任务栏按钮(FLASHW_TRAY)，不要 FLASHW_ALL——后者含 FLASHW_CAPTION 会闪窗口标题栏/边框
             let mut fi = FLASHWINFO {
                 cbSize: std::mem::size_of::<FLASHWINFO>() as u32,
                 hwnd,
-                dwFlags: FLASHW_ALL | FLASHW_TIMERNOFG,
+                dwFlags: FLASHW_TRAY | FLASHW_TIMERNOFG,
                 uCount: 0,
                 dwTimeout: 0,
             };
@@ -773,15 +789,48 @@ fn chat_clear_unread(app: tauri::AppHandle) {
 #[cfg(windows)]
 fn hide_from_alt_tab(window: &tauri::WebviewWindow) {
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
     };
     if let Ok(hwnd) = window.hwnd() {
         unsafe {
             let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
             let new = (ex | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+            // 扩展样式改完要 SWP_FRAMECHANGED 才立即生效，否则首开仍可能在 Alt+Tab 露出
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
         }
     }
+}
+
+/// 前端创建隐藏窗后调它：先打 WS_EX_TOOLWINDOW（隐藏态设才干净生效）再显示。
+/// 浏览窗/便签都用——这样它们即使在显示状态也不出现在 Alt+Tab / 任务栏（含悬停预览）。
+#[tauri::command]
+fn stealth_show(window: tauri::WebviewWindow) {
+    #[cfg(windows)]
+    {
+        // 透明模式：在隐藏态先把 alpha 套好（本命令是窗口 mount 后才调、内容已加载，不会白屏），
+        // 显示时就已是半透明，不会先闪一下不透明。
+        if is_chat_label(window.label()) {
+            let lvl = CHAT_OPACITY.load(std::sync::atomic::Ordering::Relaxed);
+            if lvl < 255 {
+                apply_chat_opacity(window.app_handle(), lvl);
+            }
+        }
+        hide_from_alt_tab(&window); // 隐藏态先打一次
+    }
+    let _ = window.show();
+    #[cfg(windows)]
+    hide_from_alt_tab(&window); // 显示后补刀（首开 Alt+Tab 靠这刀）
+    let _ = window.set_focus();
 }
 
 /// 给所有直开窗（web-d*）静音/取消静音——调 WebView2 原生 IsMuted（第一方页面 JS 够不着）。
@@ -1280,8 +1329,9 @@ fn open_direct_window(app: &tauri::AppHandle, url: String) -> Result<(), String>
     if let Some((x, y, w, h)) = load_direct_geom(app) {
         builder = builder.inner_size(w, h).position(x, y);
     }
+    // 直接可见建窗（外链 WebView2 立即冷启动加载，避免隐藏建窗→show 时一下子卡），
+    // 建完立刻打 WS_EX_TOOLWINDOW + SWP_FRAMECHANGED 即时生效，从 Alt+Tab/任务栏隐去。
     let win = builder.build().map_err(|e| e.to_string())?;
-    // 从 Alt+Tab / 任务栏隐去（藏起后不从切换器露馅；唤回靠托盘/老板键）
     #[cfg(windows)]
     hide_from_alt_tab(&win);
     let _ = &win;
@@ -1777,8 +1827,10 @@ pub fn run() {
                             || window.is_minimized().unwrap_or(false);
                         if !skip {
                             let scale = window.scale_factor().unwrap_or(1.0);
+                            // 存外尺寸：开关标题栏(Alt+3 set_decorations)时外尺寸不变、内尺寸被标题栏
+                            // 吃掉变小；若存内尺寸，开关-关窗-重开循环几次窗口会越来越扁。外尺寸稳定。
                             if let (Ok(pos), Ok(size)) =
-                                (window.outer_position(), window.inner_size())
+                                (window.outer_position(), window.outer_size())
                             {
                                 if size.width > 100 && size.height > 100 {
                                     let logical_w = size.width as f64 / scale;
@@ -1884,6 +1936,8 @@ pub fn run() {
             // settings
             settings::get_settings,
             settings::set_settings,
+            settings::get_import_dir,
+            settings::set_import_dir,
             // translation
             translation::translate_text,
             translation::list_glossary_terms,
@@ -1903,6 +1957,13 @@ pub fn run() {
             board::save_board,
             board::load_board,
             board::save_file,
+            // docs（文档/Word 式富文本）
+            docs::list_docs,
+            docs::create_doc,
+            docs::rename_doc,
+            docs::delete_doc,
+            docs::save_doc,
+            docs::load_doc,
             // collections
             collections::list_collections,
             collections::create_collection,
@@ -1933,7 +1994,9 @@ pub fn run() {
             set_ref_click_through,
             // 桌面工具热键改键（首选项面板）
             tool_get_keys,
-            tool_set_key
+            tool_set_key,
+            // 浏览窗/便签从 Alt+Tab/任务栏隐去（前端建隐藏窗后调）
+            stealth_show
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
