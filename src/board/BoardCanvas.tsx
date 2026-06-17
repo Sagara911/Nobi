@@ -495,6 +495,7 @@ export default function BoardCanvas({
   onFindSimilar,
   onOpenReference,
   onSaveAsCollection,
+  onSaveToLibrary,
 }: {
   onMount: (editor: Editor) => void;
   /** 画板图片右键"找库里相似图"：有 assetId 走 clip_similar，无则用图自身像素算向量反查 */
@@ -510,6 +511,10 @@ export default function BoardCanvas({
   }) => void;
   /** 把画板上来自库的图（assetId）存成一个合集回库 */
   onSaveAsCollection?: (assetIds: number[]) => void;
+  /** 把临时拖入（仅在画板上、未入库）的图保存到素材库；回传入库后的 asset 信息。 */
+  onSaveToLibrary?: (arg: { name: string; dataB64: string }) => Promise<
+    { assetId?: number; sourcePath: string; thumb?: string } | null
+  >;
 }) {
   const editorRef = useRef<Editor | null>(null);
   if (!editorRef.current) editorRef.current = new Editor();
@@ -1763,15 +1768,58 @@ export default function BoardCanvas({
     }
   }, []);
 
-  // ---------- 拖拽落图（素材网格 → 画板） ----------
+  // ---------- 拖拽落图（素材网格 / 桌面文件 → 画板） ----------
   const onDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer.types;
-    if (types.includes("Files")) return; // 文件交给全局导入
+    // 文件直接落到画板上（仅上板、不入库、不保存——可能只是临时参考）
+    if (types.includes("Files")) {
+      e.preventDefault();
+      return;
+    }
     if (types.includes("text/uri-list") || types.includes("text/plain")) e.preventDefault();
   }, []);
+  // 桌面文件拖到画板：每个图片读成 dataURL 直接上板，不落盘、不入库
+  const dropFiles = useCallback(
+    (files: File[], at: P) => {
+      const imgs = files.filter((f) => f.type.startsWith("image/"));
+      imgs.forEach((file, i) => {
+        const fr = new FileReader();
+        fr.onload = () => {
+          const url = String(fr.result);
+          const im = new window.Image();
+          im.onload = () => {
+            const w0 = im.naturalWidth || 400;
+            const h0 = im.naturalHeight || 400;
+            const MAX = 360;
+            const scale = Math.min(1, MAX / Math.max(w0, h0, 1));
+            const w = Math.max(40, w0 * scale);
+            const h = Math.max(40, h0 * scale);
+            store.createShapes([
+              {
+                id: newId(), type: "image",
+                x: at.x - w / 2 + i * 24, y: at.y - h / 2 + i * 24,
+                rotation: 0, opacity: 1, w, h, src: url,
+                name: file.name.replace(/\.[^.]+$/, "") || "拖入图片",
+              },
+            ]);
+          };
+          im.src = url;
+        };
+        fr.readAsDataURL(file);
+      });
+    },
+    [store]
+  );
   const onDrop = useCallback(
     (e: React.DragEvent) => {
-      if (e.dataTransfer.types.includes("Files")) return;
+      if (e.dataTransfer.types.includes("Files")) {
+        const files = Array.from(e.dataTransfer.files || []);
+        if (!files.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        dropFiles(files, toPage(clientToStage(e)));
+        return;
+      }
       const raw =
         e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
       const urls = raw
@@ -1802,8 +1850,48 @@ export default function BoardCanvas({
         img.src = url;
       });
     },
-    [toPage, clientToStage, store]
+    [toPage, clientToStage, store, dropFiles]
   );
+
+  // 画板图片「保存到素材库」：把临时拖入的图（dataURL/外链）落盘入库，
+  // 入库后把该形状改成引用库文件并记下 assetId/sourcePath。
+  const saveSelectedToLibrary = useCallback(async () => {
+    if (!onSaveToLibrary) return;
+    const im = store.selectedShapes()[0];
+    if (!im || im.type !== "image") return;
+    let b64 = "";
+    try {
+      if (im.src.startsWith("data:")) {
+        b64 = im.src.split(",")[1] ?? "";
+      } else {
+        const buf = await (await fetch(im.src)).arrayBuffer();
+        b64 = bufToB64(buf);
+      }
+    } catch {
+      showToast("读取图片失败，无法保存");
+      return;
+    }
+    if (!b64) return;
+    const ext = im.src.startsWith("data:")
+      ? (im.src.slice(5, im.src.indexOf(";")).split("/")[1] || "png").replace("jpeg", "jpg")
+      : "png";
+    const saved = await onSaveToLibrary({ name: `${im.name || "画板图片"}.${ext}`, dataB64: b64 });
+    if (!saved) return;
+    store.mutate(() => {
+      store.shapes = store.shapes.map((s) =>
+        s.id === im.id && s.type === "image"
+          ? {
+              ...s,
+              src: convertFileSrc(saved.sourcePath),
+              sourcePath: saved.sourcePath,
+              assetId: saved.assetId,
+              thumbSrc: saved.thumb ? convertFileSrc(saved.thumb) : s.thumbSrc,
+            }
+          : s
+      );
+    });
+    showToast("已保存到素材库");
+  }, [onSaveToLibrary, store]);
 
   // ---------- 样式应用 ----------
   const applyStyle = useCallback(
@@ -2251,6 +2339,17 @@ export default function BoardCanvas({
                                 const im = selShapes[0] as ImageShape;
                                 onFindSimilar({ assetId: im.assetId, src: im.src });
                               },
+                            ] as [string, string, boolean, () => void]]
+                          : []),
+                        // 保存到素材库：仅对「临时拖入、尚未入库」的图（无 assetId 也无 sourcePath）开放
+                        ...(onSaveToLibrary
+                          ? [[
+                              "保存到素材库", "",
+                              (() => {
+                                const im = selShapes[0] as ImageShape;
+                                return im.assetId == null && !im.sourcePath;
+                              })(),
+                              () => void saveSelectedToLibrary(),
                             ] as [string, string, boolean, () => void]]
                           : []),
                       ] as [string, string, boolean, () => void][])

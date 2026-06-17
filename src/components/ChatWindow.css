@@ -120,6 +120,62 @@
 .chat-idedit .chat-field {
   margin-bottom: 8px;
 }
+/* 气泡颜色选择 */
+.chat-bubble-pick {
+  margin-top: 4px;
+}
+.chat-bubble-pick-label {
+  display: block;
+  font-size: 12px;
+  color: #9a9ba2;
+  margin-bottom: 6px;
+}
+.chat-bubble-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.chat-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 1px #4a4c52;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+}
+.chat-swatch.on {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px #2f6fdd;
+}
+.chat-swatch-default {
+  width: auto;
+  height: 22px;
+  border-radius: 11px;
+  padding: 0 9px;
+  background: #34363b;
+  color: #d0d1d6;
+  font-size: 11px;
+}
+.chat-swatch-custom {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #34363b;
+  font-size: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.chat-swatch-custom input[type="color"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
 .chat-idedit-foot {
   display: flex;
   align-items: center;
@@ -228,7 +284,8 @@
   word-break: break-word;
 }
 .chat-row.mine .chat-bubble {
-  background: #2b5278;
+  background: var(--mine-bubble, #2b5278);
+  color: var(--mine-bubble-text, #e6e6ea);
 }
 .chat-text {
   white-space: pre-wrap;

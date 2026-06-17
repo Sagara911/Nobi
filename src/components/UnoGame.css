@@ -1,0 +1,281 @@
+/* UNO 对局面板：覆盖在聊天窗内容区上方 */
+.uno-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: #15161a;
+  color: #e6e6ea;
+  overflow-y: auto;
+}
+.uno-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2c2e34;
+  background: #1c1d22;
+}
+.uno-title {
+  font-weight: 700;
+}
+.uno-x {
+  background: transparent;
+  border: none;
+  color: #9a9ba2;
+  font-size: 15px;
+  cursor: pointer;
+}
+.uno-x:hover {
+  color: #fff;
+}
+
+.uno-idle,
+.uno-lobby {
+  padding: 16px;
+  text-align: center;
+}
+.uno-hint {
+  font-size: 12px;
+  color: #8a8b92;
+  margin: 8px 0 0;
+}
+.uno-btn {
+  background: #2b2d33;
+  border: 1px solid #3a3c44;
+  color: #e6e6ea;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.uno-btn:hover:not(:disabled) {
+  border-color: #5a5c66;
+}
+.uno-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.uno-btn.primary {
+  background: #2f6fdd;
+  border-color: #2f6fdd;
+  color: #fff;
+}
+.uno-btn.primary:hover:not(:disabled) {
+  background: #3f7ce6;
+}
+
+.uno-lobby-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.uno-players {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.uno-players li {
+  background: #20222820;
+  background: #202228;
+  border-radius: 6px;
+  padding: 5px 10px;
+}
+
+/* 牌桌 */
+.uno-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.uno-seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+.uno-seat {
+  background: #202228;
+  border: 1px solid #2c2e34;
+  border-radius: 12px;
+  padding: 3px 9px;
+}
+.uno-seat.turn {
+  border-color: #e8b21f;
+  color: #ffd866;
+  font-weight: 600;
+}
+.uno-seat.me {
+  background: #25303f;
+}
+.uno-dir {
+  margin-left: auto;
+  color: #8a8b92;
+}
+
+.uno-table {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  padding: 12px 0;
+}
+.uno-pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.uno-pile-label {
+  font-size: 10px;
+  color: #8a8b92;
+}
+.uno-back {
+  width: 40px;
+  height: 58px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(45deg, #2b2d33, #2b2d33 5px, #34363d 5px, #34363d 10px);
+  border: 2px solid #4a4c55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #d0d1d6;
+  transform: rotate(-3deg);
+}
+.uno-curcolor {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+
+/* 单张牌 */
+.uno-card {
+  min-width: 40px;
+  height: 58px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  cursor: default;
+  padding: 0 6px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+.uno-card.uno-wild {
+  background: conic-gradient(#e0413a, #e8b21f, #3a9e4d, #2f6fdd, #e0413a);
+}
+.uno-card.playable {
+  cursor: pointer;
+}
+.uno-card.playable:hover {
+  transform: translateY(-4px);
+}
+.uno-card.dim {
+  opacity: 0.4;
+}
+
+.uno-turnbar {
+  text-align: center;
+  font-size: 13px;
+  color: #9a9ba2;
+  padding: 4px;
+}
+.uno-turnbar.mine {
+  color: #ffd866;
+  font-weight: 700;
+}
+.uno-over {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.uno-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  padding: 8px;
+  background: #1a1b1f;
+  border-radius: 10px;
+  min-height: 64px;
+  align-items: center;
+}
+.uno-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.uno-callout {
+  color: #e8b21f;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.uno-log {
+  font-size: 11px;
+  color: #7a7b82;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* 选色弹层 */
+.uno-colorpick {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.uno-colorpick-box {
+  background: #1c1d22;
+  border: 1px solid #3a3c44;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+.uno-colorpick-title {
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.uno-colorpick-row {
+  display: flex;
+  gap: 8px;
+}
+.uno-colorbtn {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.uno-colorbtn:hover {
+  transform: scale(1.07);
+}

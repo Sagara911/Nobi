@@ -115,6 +115,30 @@ export function setAvatar(a: string): void {
   }
 }
 
+// 我的气泡颜色（本机偏好，只改自己发出的消息气泡；空串=用默认蓝）
+const BUBBLE_KEY = "nobi.chat.bubbleColor";
+export const BUBBLE_COLORS = [
+  "#2b5278", "#2f7a4d", "#6d4bb6", "#1f7a85",
+  "#a83246", "#b5642a", "#b03b78", "#444a55",
+];
+
+export function getBubbleColor(): string {
+  try {
+    return localStorage.getItem(BUBBLE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function setBubbleColor(c: string): void {
+  try {
+    if (c) localStorage.setItem(BUBBLE_KEY, c);
+    else localStorage.removeItem(BUBBLE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 // ===== 连接档案（多套后端）=====
 
 export interface ChatProfile {

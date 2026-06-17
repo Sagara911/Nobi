@@ -78,6 +78,9 @@ export interface DockState {
   addSelToCollection: (id: number) => void;
   deleteCollection: (id: number) => void;
   saveBoardAsCollection: (assetIds: number[]) => void;
+  saveBoardImageToLibrary: (arg: { name: string; dataB64: string }) => Promise<
+    { assetId?: number; sourcePath: string; thumb?: string } | null
+  >;
   exportContactSheet: (list: Asset[], title: string) => void;
   thumbSize: number;
   setThumbSize: (n: number) => void;
@@ -584,6 +587,7 @@ function BoardPanel(_p: IDockviewPanelProps) {
       onFindSimilar={d.findSimilarFromBoard}
       onOpenReference={d.openBoardReference}
       onSaveAsCollection={d.saveBoardAsCollection}
+      onSaveToLibrary={d.saveBoardImageToLibrary}
     />
   );
 }

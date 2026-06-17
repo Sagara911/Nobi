@@ -21,6 +21,9 @@ import {
   setNickname,
   getAvatar,
   setAvatar,
+  getBubbleColor,
+  setBubbleColor,
+  BUBBLE_COLORS,
   AVATAR_CHOICES,
   fileToAvatar,
   isImageAvatar,
@@ -45,6 +48,7 @@ import {
   type ConnStatus,
 } from "../chat";
 import "./ChatWindow.css";
+import UnoGame, { UNO_TAG, type GEvent } from "./UnoGame";
 
 const LAUNCHER_LABEL = "chat";
 
@@ -135,6 +139,17 @@ function hashHue(s: string): number {
   return h;
 }
 
+/** 按气泡底色亮度选可读文字色：浅底→深字，深底→白字 */
+function readableText(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return "#e6e6ea";
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  // 相对亮度（sRGB 近似）
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#1c1c28" : "#fff";
+}
+
 /** 头像：图片(data/http)显图，emoji 显 emoji，否则名字首字 + 确定性配色（默认） */
 function MsgAvatar({ name, avatar }: { name: string; avatar?: string }) {
   if (isImageAvatar(avatar)) return <img className="chat-ava chat-ava-img" src={avatar} alt="" />;
@@ -200,6 +215,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   // 渲染处一律用这两个 state（而非 cfg.nickname），改完即时反映。
   const [nickname, setNick] = useState<string>(() => getNickname());
   const [avatar, setAva] = useState<string>(() => getAvatar());
+  const [bubbleColor, setBubble] = useState<string>(() => getBubbleColor());
   const [editId, setEditId] = useState(false);
   const avaFileRef = useRef<HTMLInputElement | null>(null);
 
@@ -250,6 +266,32 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     setMessages((prev) => [...prev, m]);
   }, []);
 
+  // 小游戏（UNO）走聊天通道，但正文带 UNO_TAG 前缀：分流给游戏、不进消息流
+  const [gameOpen, setGameOpen] = useState(false);
+  const gameListeners = useRef<Set<(ev: GEvent) => void>>(new Set());
+  const routeIncoming = useCallback(
+    (m: ChatMessage) => {
+      if (m.body && m.body.startsWith(UNO_TAG)) {
+        try {
+          const ev = JSON.parse(m.body.slice(UNO_TAG.length)) as GEvent;
+          gameListeners.current.forEach((fn) => fn(ev));
+        } catch {
+          /* 坏帧忽略 */
+        }
+        return;
+      }
+      appendMsg(m);
+    },
+    [appendMsg],
+  );
+  const sendGame = useCallback((ev: GEvent) => {
+    void backendRef.current?.sendText(UNO_TAG + JSON.stringify(ev)).catch(() => {});
+  }, []);
+  const subscribeGame = useCallback((fn: (ev: GEvent) => void) => {
+    gameListeners.current.add(fn);
+    return () => gameListeners.current.delete(fn);
+  }, []);
+
   // 活跃连接标记 + 未读清零：聚焦=正在看→记活跃+清红点；失焦/关窗=没在看→主窗能为它弹提醒
   useEffect(() => {
     setActiveConn(profileId, room);
@@ -291,7 +333,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     setMessages([]);
 
     const offMsg = backend.onMessage((m) => {
-      if (!disposed) appendMsg(m);
+      if (!disposed) routeIncoming(m);
     });
     const offSt = backend.onStatus((s, detail) => {
       if (disposed) return;
@@ -304,7 +346,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
       try {
         await backend.connect();
         const past = await backend.history(50);
-        if (!disposed) past.forEach(appendMsg);
+        if (!disposed) past.forEach(routeIncoming);
       } catch (e) {
         if (!disposed) {
           setStatus("error");
@@ -320,7 +362,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
       void backend.disconnect();
       backendRef.current = null;
     };
-  }, [cfg, appendMsg]);
+  }, [cfg, routeIncoming]);
 
   // 连上后轮询排空 outbox（WebView2 多窗口间 storage 事件不可靠）
   useEffect(() => {
@@ -410,6 +452,11 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     setAvatar(a);
     backendRef.current?.updateIdentity?.(nickname.trim(), a);
   };
+  // 气泡颜色：本机偏好，只影响自己发出的气泡（空=默认蓝）。即时落盘+反映。
+  const applyBubble = (c: string) => {
+    setBubble(c);
+    setBubbleColor(c);
+  };
   const onPickAvaFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = ""; // 允许重选同一文件
@@ -482,6 +529,14 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   return (
     <div
       className="chat-win"
+      style={
+        bubbleColor
+          ? ({
+              "--mine-bubble": bubbleColor,
+              "--mine-bubble-text": readableText(bubbleColor),
+            } as React.CSSProperties)
+          : undefined
+      }
       onDragOver={(e) => {
         e.preventDefault();
         if (!dragging) setDragging(true);
@@ -506,9 +561,25 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
           >
             <MsgAvatar name={nickname} avatar={avatar} />
           </button>
+          <button
+            className={`chat-gear${gameOpen ? " on" : ""}`}
+            title="UNO 小游戏"
+            onClick={() => setGameOpen((v) => !v)}
+          >
+            🎴
+          </button>
           <button className="chat-gear" title="发起/加入别的群" onClick={() => void openLauncherWindow()}>＋</button>
         </div>
       </header>
+
+      <UnoGame
+        open={gameOpen}
+        myId={cfg.clientId}
+        myName={nickname}
+        sendGame={sendGame}
+        subscribeGame={subscribeGame}
+        onClose={() => setGameOpen(false)}
+      />
 
       {editId && (
         <div className="chat-idedit">
@@ -561,6 +632,37 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
             style={{ display: "none" }}
             onChange={onPickAvaFile}
           />
+          <div className="chat-bubble-pick">
+            <span className="chat-bubble-pick-label">我的气泡颜色</span>
+            <div className="chat-bubble-swatches">
+              <button
+                type="button"
+                className={`chat-swatch chat-swatch-default${!bubbleColor ? " on" : ""}`}
+                title="默认（蓝）"
+                onClick={() => applyBubble("")}
+              >
+                默认
+              </button>
+              {BUBBLE_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`chat-swatch${bubbleColor.toLowerCase() === c.toLowerCase() ? " on" : ""}`}
+                  style={{ background: c }}
+                  title={c}
+                  onClick={() => applyBubble(c)}
+                />
+              ))}
+              <label className="chat-swatch chat-swatch-custom" title="自定义颜色">
+                🎨
+                <input
+                  type="color"
+                  value={/^#[0-9a-f]{6}$/i.test(bubbleColor) ? bubbleColor : "#2b5278"}
+                  onChange={(e) => applyBubble(e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
           <div className="chat-idedit-foot">
             <span className="chat-hint">改完即时生效；已发出的旧消息保留当时的名字。</span>
             <button type="button" onClick={() => setEditId(false)}>完成</button>
