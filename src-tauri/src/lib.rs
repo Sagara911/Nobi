@@ -784,30 +784,37 @@ fn chat_clear_unread(app: tauri::AppHandle) {
     stop_flash(&app);
 }
 
-/// 把窗口从 Alt+Tab 切换器与任务栏里隐去（加 WS_EX_TOOLWINDOW、去 WS_EX_APPWINDOW）。
-/// 用于看球直开窗：藏起来后别再从 Alt+Tab 露馅。代价是任务栏也没有按钮（靠托盘/老板键唤回）。
+/// 按 HWND 把窗口从 Alt+Tab/任务栏隐去。on_window_event 给的是 &Window、其它地方是 &WebviewWindow，
+/// 都能拿 hwnd，故核心逻辑按 hwnd 写、两边复用。
 #[cfg(windows)]
-fn hide_from_alt_tab(window: &tauri::WebviewWindow) {
+fn hide_hwnd_from_alt_tab(hwnd: windows::Win32::Foundation::HWND) {
     use windows::Win32::UI::WindowsAndMessaging::{
         GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
         SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
     };
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let new = (ex | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+        // 扩展样式改完要 SWP_FRAMECHANGED 才立即生效
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
+/// 把窗口从 Alt+Tab 切换器与任务栏里隐去（加 WS_EX_TOOLWINDOW、去 WS_EX_APPWINDOW）。
+/// 用于看球直开窗：藏起来后别再从 Alt+Tab 露馅。代价是任务栏也没有按钮（靠托盘/老板键唤回）。
+#[cfg(windows)]
+fn hide_from_alt_tab(window: &tauri::WebviewWindow) {
     if let Ok(hwnd) = window.hwnd() {
-        unsafe {
-            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let new = (ex | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
-            // 扩展样式改完要 SWP_FRAMECHANGED 才立即生效，否则首开仍可能在 Alt+Tab 露出
-            let _ = SetWindowPos(
-                hwnd,
-                None,
-                0,
-                0,
-                0,
-                0,
-                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-        }
+        hide_hwnd_from_alt_tab(hwnd);
     }
 }
 
@@ -1765,6 +1772,18 @@ pub fn run() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     let _ = window.hide();
                     api.prevent_close();
+                }
+            }
+            // 浏览窗/便签：窗口真正显示出来(Focused)时再打 WS_EX_TOOLWINDOW 从 Alt+Tab/任务栏隐去。
+            // 建窗后立刻打太早（任务栏/Alt+Tab 注册还没建好，不生效）；获焦时窗已完全实体化，标记才稳。
+            // 幂等，每次获焦都补打无害。这是首开能可靠隐身的关键。
+            #[cfg(windows)]
+            if matches!(event, tauri::WindowEvent::Focused(true)) {
+                let l = window.label();
+                if l.starts_with("web-d") || is_chat_label(l) {
+                    if let Ok(hwnd) = window.hwnd() {
+                        hide_hwnd_from_alt_tab(hwnd);
+                    }
                 }
             }
             // 看球快捷键生命周期：任一 web-* 窗有动静（建窗后必有 Focused/Resized）即占键；

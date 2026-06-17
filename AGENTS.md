@@ -91,6 +91,9 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **浏览窗几何存 outer_size**（原 inner_size）：Alt+3 开标题栏时内尺寸被吃掉变小，存内尺寸→开关-关窗-重开循环窗口越来越扁；外尺寸稳定
 - **已知正常**：浏览窗首开 Alt+3 迟钝要按两次——`set_decorations` 异步重操作 vs WebView2 冷启动抢资源，引擎热后正常，非 bug
 
+### v0.2.15 修正（隐身打标记时机）
+**v0.2.13/0.2.14 的隐身在发布版首开仍露馅**：根因是「建窗后**立刻**打 `WS_EX_TOOLWINDOW`」太早——窗口的任务栏/Alt+Tab 注册还没建好，标记不生效（老板键有效是因为对**已存在**的窗操作）。**修法**：把核心逻辑抽成 `hide_hwnd_from_alt_tab(hwnd)`，在 `on_window_event` 的 **`Focused(true)`** 里给 `web-d*` / 聊天窗(`is_chat_label`)打标记——此时窗已完全实体化，跟老板键同样有效时机，每次获焦幂等补打。这才是首开能可靠隐身的关键。
+
 ## 已知的坑
 
 - **cargo 文件锁**：`npm run tauri dev` 的 watcher 与任何并行 cargo/构建会抢锁，可能把 watcher 抢死（vite 活着但 Rust 不再重编译、应用不重启）。规则：**dev 跑着时不要并行跑 cargo build/check**；watcher 死了就重启 dev
