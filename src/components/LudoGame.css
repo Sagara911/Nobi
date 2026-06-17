@@ -1,0 +1,154 @@
+/* 飞行棋面板：覆盖在聊天窗内容区上方 */
+.ludo-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: #15161a;
+  color: #e6e6ea;
+  overflow-y: auto;
+}
+.ludo-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2c2e34;
+  background: #1c1d22;
+}
+.ludo-title { font-weight: 700; }
+.ludo-head-btns { display: flex; align-items: center; gap: 8px; }
+.ludo-leave {
+  background: #2b2d33;
+  border: 1px solid #3a3c44;
+  color: #d0d1d6;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ludo-leave:hover { border-color: #c0584f; color: #ff9b9b; }
+.ludo-leave:active { transform: translateY(1px); }
+.ludo-x {
+  background: transparent;
+  border: none;
+  color: #9a9ba2;
+  font-size: 15px;
+  cursor: pointer;
+}
+.ludo-x:hover { color: #fff; }
+
+.ludo-idle, .ludo-lobby { padding: 16px; text-align: center; }
+.ludo-hint { font-size: 12px; color: #8a8b92; margin: 8px 0 0; }
+.ludo-btn {
+  background: #2b2d33;
+  border: 1px solid #3a3c44;
+  color: #e6e6ea;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ludo-btn:hover:not(:disabled) { border-color: #5a5c66; }
+.ludo-btn:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
+.ludo-btn:disabled { opacity: 0.45; cursor: default; }
+.ludo-btn.primary { background: #2f6fdd; border-color: #2f6fdd; color: #fff; }
+.ludo-btn.primary:hover:not(:disabled) { background: #3f7ce6; }
+
+.ludo-players {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ludo-players li {
+  background: #202228;
+  border-radius: 6px;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ludo-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+
+/* 棋盘 */
+.ludo-board-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+.ludo-board {
+  width: 100%;
+  max-width: 300px;
+  align-self: center;
+  background: #101116;
+  border-radius: 10px;
+}
+.ludo-plane { transition: stroke 0.1s ease; }
+.ludo-plane.movable { cursor: pointer; }
+.ludo-plane.movable:hover { r: 7.5; }
+
+.ludo-seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  justify-content: center;
+}
+.ludo-seat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #202228;
+  border: 1px solid #2c2e34;
+  border-radius: 12px;
+  padding: 3px 9px;
+}
+.ludo-seat.turn { border-color: #e8b21f; color: #ffd866; font-weight: 600; }
+.ludo-done { color: #8a8b92; }
+
+.ludo-actbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px;
+}
+.ludo-die {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #f4f4f6;
+  color: #1c1d22;
+  font-size: 20px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+}
+.ludo-status { font-size: 13px; color: #9a9ba2; }
+.ludo-status.hot { color: #ffd866; font-weight: 600; }
+
+.ludo-over { text-align: center; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ludo-over-text { font-size: 15px; font-weight: 700; }
+.ludo-over-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+.ludo-log {
+  font-size: 11px;
+  color: #7a7b82;
+  text-align: center;
+  line-height: 1.6;
+}

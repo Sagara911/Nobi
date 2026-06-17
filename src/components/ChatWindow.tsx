@@ -49,6 +49,7 @@ import {
 } from "../chat";
 import "./ChatWindow.css";
 import UnoGame, { UNO_TAG, type GEvent } from "./UnoGame";
+import LudoGame, { LUDO_TAG, type LEvent } from "./LudoGame";
 
 const LAUNCHER_LABEL = "chat";
 
@@ -266,30 +267,42 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     setMessages((prev) => [...prev, m]);
   }, []);
 
-  // 小游戏（UNO）走聊天通道，但正文带 UNO_TAG 前缀：分流给游戏、不进消息流
-  const [gameOpen, setGameOpen] = useState(false);
-  const gameListeners = useRef<Set<(ev: GEvent) => void>>(new Set());
+  // 小游戏走聊天通道，但正文带各自的 TAG 前缀：分流给对应游戏、不进消息流。
+  // UNO 与飞行棋各用独立 tag + 监听集，互不干扰；UNO 线路保持原样不动。
+  const [openGame, setOpenGame] = useState<null | "uno" | "ludo">(null);
+  const unoListeners = useRef<Set<(ev: GEvent) => void>>(new Set());
+  const ludoListeners = useRef<Set<(ev: LEvent) => void>>(new Set());
   const routeIncoming = useCallback(
     (m: ChatMessage) => {
-      if (m.body && m.body.startsWith(UNO_TAG)) {
+      const dispatch = <E,>(tag: string, set: Set<(ev: E) => void>): boolean => {
+        if (!m.body || !m.body.startsWith(tag)) return false;
         try {
-          const ev = JSON.parse(m.body.slice(UNO_TAG.length)) as GEvent;
-          gameListeners.current.forEach((fn) => fn(ev));
+          const ev = JSON.parse(m.body.slice(tag.length)) as E;
+          set.forEach((fn) => fn(ev));
         } catch {
           /* 坏帧忽略 */
         }
-        return;
-      }
+        return true;
+      };
+      if (dispatch<GEvent>(UNO_TAG, unoListeners.current)) return;
+      if (dispatch<LEvent>(LUDO_TAG, ludoListeners.current)) return;
       appendMsg(m);
     },
     [appendMsg],
   );
-  const sendGame = useCallback((ev: GEvent) => {
+  const sendUno = useCallback((ev: GEvent) => {
     void backendRef.current?.sendText(UNO_TAG + JSON.stringify(ev)).catch(() => {});
   }, []);
-  const subscribeGame = useCallback((fn: (ev: GEvent) => void) => {
-    gameListeners.current.add(fn);
-    return () => gameListeners.current.delete(fn);
+  const subscribeUno = useCallback((fn: (ev: GEvent) => void) => {
+    unoListeners.current.add(fn);
+    return () => unoListeners.current.delete(fn);
+  }, []);
+  const sendLudo = useCallback((ev: LEvent) => {
+    void backendRef.current?.sendText(LUDO_TAG + JSON.stringify(ev)).catch(() => {});
+  }, []);
+  const subscribeLudo = useCallback((fn: (ev: LEvent) => void) => {
+    ludoListeners.current.add(fn);
+    return () => ludoListeners.current.delete(fn);
   }, []);
 
   // 活跃连接标记 + 未读清零：聚焦=正在看→记活跃+清红点；失焦/关窗=没在看→主窗能为它弹提醒
@@ -562,11 +575,18 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
             <MsgAvatar name={nickname} avatar={avatar} />
           </button>
           <button
-            className={`chat-gear${gameOpen ? " on" : ""}`}
+            className={`chat-gear${openGame === "uno" ? " on" : ""}`}
             title="UNO 小游戏"
-            onClick={() => setGameOpen((v) => !v)}
+            onClick={() => setOpenGame((g) => (g === "uno" ? null : "uno"))}
           >
             🎴
+          </button>
+          <button
+            className={`chat-gear${openGame === "ludo" ? " on" : ""}`}
+            title="飞行棋"
+            onClick={() => setOpenGame((g) => (g === "ludo" ? null : "ludo"))}
+          >
+            🎲
           </button>
           <button className="chat-gear" title="发起/加入别的群" onClick={() => void openLauncherWindow()}>＋</button>
           {/* 自定义窗口控制：便签是隐身窗(toolwindow)，系统标题栏只剩关闭，这里补上 放大/隐藏 */}
@@ -588,12 +608,20 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
       </header>
 
       <UnoGame
-        open={gameOpen}
+        open={openGame === "uno"}
         myId={cfg.clientId}
         myName={nickname}
-        sendGame={sendGame}
-        subscribeGame={subscribeGame}
-        onClose={() => setGameOpen(false)}
+        sendGame={sendUno}
+        subscribeGame={subscribeUno}
+        onClose={() => setOpenGame(null)}
+      />
+      <LudoGame
+        open={openGame === "ludo"}
+        myId={cfg.clientId}
+        myName={nickname}
+        sendGame={sendLudo}
+        subscribeGame={subscribeLudo}
+        onClose={() => setOpenGame(null)}
       />
 
       {editId && (
