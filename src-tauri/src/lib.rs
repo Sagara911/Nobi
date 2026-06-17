@@ -818,35 +818,6 @@ fn hide_from_alt_tab(window: &tauri::WebviewWindow) {
     }
 }
 
-/// hide_from_alt_tab 的反操作：去掉 WS_EX_TOOLWINDOW、加回 WS_EX_APPWINDOW，
-/// 让窗口重新进任务栏/Alt+Tab —— 关键是去掉 toolwindow 后系统标题栏才会带上
-/// 最小化/最大化按钮（toolwindow 样式会把这俩砍掉只留关闭）。
-#[cfg(windows)]
-fn show_in_alt_tab(window: &tauri::WebviewWindow) {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
-    };
-    if let Ok(hwnd) = window.hwnd() {
-        unsafe {
-            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let new = (ex & !(WS_EX_TOOLWINDOW.0 as isize)) | WS_EX_APPWINDOW.0 as isize;
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
-            // 去掉 toolwindow + SWP_FRAMECHANGED 重算非客户区 → 系统标题栏即带上最小化/最大化键。
-            // 不做 hide/show（那只为任务栏注册，会闪一下；最小/最大化键的出现只需去 toolwindow）。
-            let _ = SetWindowPos(
-                hwnd,
-                None,
-                0,
-                0,
-                0,
-                0,
-                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-        }
-    }
-}
-
 /// 前端创建隐藏窗后调它：先打 WS_EX_TOOLWINDOW（隐藏态设才干净生效）再显示。
 /// 浏览窗/便签都用——这样它们即使在显示状态也不出现在 Alt+Tab / 任务栏（含悬停预览）。
 #[tauri::command]
@@ -1666,14 +1637,11 @@ pub fn run() {
                                     for (label, w) in app.webview_windows() {
                                         if label.starts_with("web-d") {
                                             let _ = w.set_decorations(on);
-                                            // 显示标题栏时同时退出隐身→拿到系统的最小化/最大化/关闭三键
-                                            //（toolwindow 样式会砍掉最小化/最大化）；收起标题栏时恢复隐身。
+                                            // 永远保持隐身：set_decorations 改完窗样式后补打 toolwindow，
+                                            // 浏览窗绝不进任务栏/Alt+Tab（除老板键外任何方式都看不见）。
+                                            // 代价：隐身窗的系统标题栏只有关闭键，没有最小化/最大化。
                                             #[cfg(windows)]
-                                            if on {
-                                                show_in_alt_tab(&w);
-                                            } else {
-                                                hide_from_alt_tab(&w);
-                                            }
+                                            hide_from_alt_tab(&w);
                                         }
                                     }
                                     // set_decorations 异步重写窗样式、抹掉 layered alpha→立即+延迟补刀
@@ -1834,12 +1802,9 @@ pub fn run() {
             if matches!(event, tauri::WindowEvent::Focused(true)) {
                 let l = window.label();
                 if l.starts_with("web-d") {
-                    // 浏览窗：标题栏模式(WEB_DECOR on)下别重打隐身——否则刚显示的最小/最大化键
-                    // 会被立刻砍掉(只闪一帧)。收起标题栏时仍按 focus 重隐身。
-                    if !WEB_DECOR.load(std::sync::atomic::Ordering::Relaxed) {
-                        if let Ok(hwnd) = window.hwnd() {
-                            hide_hwnd_from_alt_tab(hwnd);
-                        }
+                    // 浏览窗：每次获焦都补打隐身，永远不进任务栏/Alt+Tab（除老板键外任何方式都看不见）。
+                    if let Ok(hwnd) = window.hwnd() {
+                        hide_hwnd_from_alt_tab(hwnd);
                     }
                 } else if is_chat_label(l) {
                     // 便签：只在首次获焦打一次隐身。之后每次获焦都打的话，SWP_FRAMECHANGED
