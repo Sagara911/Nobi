@@ -21,6 +21,27 @@
 .uno-title {
   font-weight: 700;
 }
+.uno-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.uno-leave {
+  background: #2b2d33;
+  border: 1px solid #3a3c44;
+  color: #d0d1d6;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.uno-leave:hover {
+  border-color: #c0584f;
+  color: #ff9b9b;
+}
+.uno-leave:active {
+  transform: translateY(1px);
+}
 .uno-x {
   background: transparent;
   border: none;
@@ -54,6 +75,9 @@
 }
 .uno-btn:hover:not(:disabled) {
   border-color: #5a5c66;
+}
+.uno-btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
 }
 .uno-btn:disabled {
   opacity: 0.45;
@@ -183,8 +207,15 @@
 .uno-card.playable {
   cursor: pointer;
 }
+.uno-card {
+  transition: transform 0.08s ease;
+}
 .uno-card.playable:hover {
   transform: translateY(-4px);
+}
+.uno-card.playable:active {
+  transform: translateY(-1px) scale(0.93);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 .uno-card.dim {
   opacity: 0.4;
@@ -202,13 +233,22 @@
 }
 .uno-over {
   text-align: center;
-  font-size: 15px;
-  font-weight: 700;
   padding: 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
+}
+.uno-over-text {
+  font-size: 15px;
+  font-weight: 700;
+}
+.uno-over-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .uno-hand {
@@ -278,4 +318,7 @@
 }
 .uno-colorbtn:hover {
   transform: scale(1.07);
+}
+.uno-colorbtn:active {
+  transform: scale(0.95);
 }

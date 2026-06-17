@@ -818,26 +818,67 @@ fn hide_from_alt_tab(window: &tauri::WebviewWindow) {
     }
 }
 
+/// hide_from_alt_tab 的反操作：去掉 WS_EX_TOOLWINDOW、加回 WS_EX_APPWINDOW，
+/// 让窗口重新进任务栏/Alt+Tab —— 关键是去掉 toolwindow 后系统标题栏才会带上
+/// 最小化/最大化按钮（toolwindow 样式会把这俩砍掉只留关闭）。
+#[cfg(windows)]
+fn show_in_alt_tab(window: &tauri::WebviewWindow) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    };
+    if let Ok(hwnd) = window.hwnd() {
+        unsafe {
+            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let new = (ex & !(WS_EX_TOOLWINDOW.0 as isize)) | WS_EX_APPWINDOW.0 as isize;
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+    // WS_EX_APPWINDOW 要隐藏再显示才会在任务栏注册——快速 hide/show 一下
+    let _ = window.hide();
+    let _ = window.show();
+}
+
 /// 前端创建隐藏窗后调它：先打 WS_EX_TOOLWINDOW（隐藏态设才干净生效）再显示。
 /// 浏览窗/便签都用——这样它们即使在显示状态也不出现在 Alt+Tab / 任务栏（含悬停预览）。
 #[tauri::command]
 fn stealth_show(window: tauri::WebviewWindow) {
     #[cfg(windows)]
     {
-        // 透明模式：在隐藏态先把 alpha 套好（本命令是窗口 mount 后才调、内容已加载，不会白屏），
-        // 显示时就已是半透明，不会先闪一下不透明。
-        if is_chat_label(window.label()) {
-            let lvl = CHAT_OPACITY.load(std::sync::atomic::Ordering::Relaxed);
-            if lvl < 255 {
-                apply_chat_opacity(window.app_handle(), lvl);
-            }
-        }
-        hide_from_alt_tab(&window); // 隐藏态先打一次
+        hide_from_alt_tab(&window); // 隐藏态先打 toolwindow（隐藏态设才干净）
+        // 样式定下来后、show 前先套一次 alpha → 显示即半透明，不闪一下不透明
+        apply_chat_alpha_for(&window);
     }
     let _ = window.show();
     #[cfg(windows)]
-    hide_from_alt_tab(&window); // 显示后补刀（首开 Alt+Tab 靠这刀）
+    {
+        hide_from_alt_tab(&window); // 显示后补刀（首开 Alt+Tab 靠这刀）
+        // 关键：上面两次 hide_from_alt_tab 的 SWP_FRAMECHANGED 会抹掉 layered alpha，
+        // 所以透明度必须在所有窗样式变更之后再套一次——否则首开成不透明，得点一下(获焦)才补上。
+        apply_chat_alpha_for(&window);
+    }
     let _ = window.set_focus();
+}
+
+/// 若是便签窗且当前透明度 <255，把记忆的透明度套到所有便签窗。
+/// 必须在窗样式变更(SWP_FRAMECHANGED)之后调，否则 alpha 会被抹掉。
+#[cfg(windows)]
+fn apply_chat_alpha_for(window: &tauri::WebviewWindow) {
+    if is_chat_label(window.label()) {
+        let lvl = CHAT_OPACITY.load(std::sync::atomic::Ordering::Relaxed);
+        if lvl < 255 {
+            apply_chat_opacity(window.app_handle(), lvl);
+        }
+    }
 }
 
 /// 给所有直开窗（web-d*）静音/取消静音——调 WebView2 原生 IsMuted（第一方页面 JS 够不着）。
@@ -1621,6 +1662,14 @@ pub fn run() {
                                     for (label, w) in app.webview_windows() {
                                         if label.starts_with("web-d") {
                                             let _ = w.set_decorations(on);
+                                            // 显示标题栏时同时退出隐身→拿到系统的最小化/最大化/关闭三键
+                                            //（toolwindow 样式会砍掉最小化/最大化）；收起标题栏时恢复隐身。
+                                            #[cfg(windows)]
+                                            if on {
+                                                show_in_alt_tab(&w);
+                                            } else {
+                                                hide_from_alt_tab(&w);
+                                            }
                                         }
                                     }
                                     // set_decorations 异步重写窗样式、抹掉 layered alpha→立即+延迟补刀

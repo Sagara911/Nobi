@@ -569,6 +569,21 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
             🎴
           </button>
           <button className="chat-gear" title="发起/加入别的群" onClick={() => void openLauncherWindow()}>＋</button>
+          {/* 自定义窗口控制：便签是隐身窗(toolwindow)，系统标题栏只剩关闭，这里补上 放大/隐藏 */}
+          <button
+            className="chat-gear"
+            title="最大化 / 还原"
+            onClick={() => void getCurrentWebviewWindow().toggleMaximize()}
+          >
+            ▢
+          </button>
+          <button
+            className="chat-gear"
+            title="隐藏（用老板键 Alt+C 或托盘「便签」唤回）"
+            onClick={() => void getCurrentWebviewWindow().hide()}
+          >
+            —
+          </button>
         </div>
       </header>
 

@@ -74,6 +74,7 @@ export default function UnoGame({
   const [lobby, setLobby] = useState<{ gid: string; host: string; players: UnoPlayer[] } | null>(null);
   const [gstate, setGstate] = useState<UnoState | null>(null);
   const [colorPick, setColorPick] = useState<string | null>(null); // 待选色的变色牌 cardId
+  const [pending, setPending] = useState(false); // 已发出动作、等权威快照回来（点击反馈 + 防连点）
 
   // 房主权威状态 + 去重
   const hostStateRef = useRef<UnoState | null>(null);
@@ -131,6 +132,22 @@ export default function UnoGame({
   // 始终订阅（即使面板关着也在听，这样别人开局/邀请不会漏）
   useEffect(() => subscribeGame(handle), [subscribeGame, handle]);
 
+  // 收到新快照（自己的动作生效或别人出牌）即清掉「出牌中」
+  useEffect(() => {
+    setPending(false);
+  }, [gstate]);
+
+  // 退出当前对局 / 大厅，回到初始（任何人随时可用——结算卡死的逃生口）
+  const reset = () => {
+    setLobby(null);
+    setGstate(null);
+    setColorPick(null);
+    setPending(false);
+    hostStateRef.current = null;
+    processedAids.current = new Set();
+    seenVersion.current = {};
+  };
+
   // —— 房主操作 ——
   const createLobby = () => {
     const gid = `${myId}-${uid()}`;
@@ -171,7 +188,12 @@ export default function UnoGame({
   };
 
   // —— 玩家动作（含房主自己，统一走 action + 回显，房主端处理）——
-  const act = (a: UnoAction) => sendGame({ k: "action", gid: gstate!.gid, aid: uid(), a });
+  const act = (a: UnoAction) => {
+    if (!gstate || pending) return;
+    setPending(true);
+    window.setTimeout(() => setPending(false), 4000); // 兜底：动作被忽略时别一直卡「出牌中」
+    sendGame({ k: "action", gid: gstate.gid, aid: uid(), a });
+  };
   const playCard = (card: UnoCard) => {
     if (card.color === "w") {
       setColorPick(card.id);
@@ -198,7 +220,12 @@ export default function UnoGame({
     <div className="uno-overlay">
       <div className="uno-head">
         <span className="uno-title">🎴 UNO</span>
-        <button className="uno-x" title="关闭（不结束对局）" onClick={onClose}>✕</button>
+        <div className="uno-head-btns">
+          {(inLobby || g) && (
+            <button className="uno-leave" title="退出当前对局，回到开局界面" onClick={reset}>退出</button>
+          )}
+          <button className="uno-x" title="收起面板（不结束对局）" onClick={onClose}>✕</button>
+        </div>
       </div>
 
       {/* 没有 lobby：开局 / 等待 */}
@@ -269,19 +296,26 @@ export default function UnoGame({
           {/* 状态提示 */}
           {g.status === "over" ? (
             <div className="uno-over">
-              🎉 {g.players.find((p) => p.id === g.winner)?.name || "某人"} 获胜！
-              {amHost && <button className="uno-btn primary" onClick={rematch}>再来一局</button>}
+              <div className="uno-over-text">🎉 {g.players.find((p) => p.id === g.winner)?.name || "某人"} 获胜！</div>
+              <div className="uno-over-btns">
+                {amHost ? (
+                  <button className="uno-btn primary" onClick={rematch}>再来一局</button>
+                ) : (
+                  <span className="uno-hint">等房主「再来一局」，或自己退出开新局</span>
+                )}
+                <button className="uno-btn" onClick={reset}>退出</button>
+              </div>
             </div>
           ) : (
             <div className={`uno-turnbar${myTurn ? " mine" : ""}`}>
-              {myTurn ? "轮到你了" : `等待 ${g.players[g.turn]?.name} 出牌…`}
+              {pending ? "出牌中…" : myTurn ? "轮到你了" : `等待 ${g.players[g.turn]?.name} 出牌…`}
             </div>
           )}
 
           {/* 我的手牌 */}
           <div className="uno-hand">
             {myHand.map((card) => {
-              const canHit = myTurn && legal.has(card.id);
+              const canHit = myTurn && !pending && legal.has(card.id);
               return (
                 <CardChip
                   key={card.id}
@@ -297,8 +331,8 @@ export default function UnoGame({
           {/* 行动按钮 */}
           {g.status === "playing" && myTurn && (
             <div className="uno-actions">
-              {!g.justDrew && <button className="uno-btn" onClick={() => act({ type: "draw", player: myId })}>摸牌</button>}
-              {g.justDrew && <button className="uno-btn" onClick={() => act({ type: "pass", player: myId })}>过</button>}
+              {!g.justDrew && <button className="uno-btn" disabled={pending} onClick={() => act({ type: "draw", player: myId })}>摸牌</button>}
+              {g.justDrew && <button className="uno-btn" disabled={pending} onClick={() => act({ type: "pass", player: myId })}>过</button>}
               {myHand.length === 1 && <span className="uno-callout">UNO!</span>}
             </div>
           )}
