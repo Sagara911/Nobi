@@ -942,3 +942,68 @@ textarea.cfg-input { resize: vertical; font-family: inherit; line-height: 1.5; }
   border: 1.5px dashed var(--accent); border-radius: 14px;
 }
 .drop-hint { font-size: 17px; color: var(--accent); font-weight: 500; }
+
+/* 取色模式提示横幅（顶部居中） */
+.color-pick-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 7px 16px;
+  background: var(--accent);
+  color: #1a1305;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+/* 桌面取色器最近色板（Ctrl+Alt+C 取色，浮在右下角） */
+.color-palette {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.color-palette-hd {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-right: 2px;
+  user-select: none;
+}
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.08s;
+}
+.color-swatch:hover {
+  transform: scale(1.15);
+  border-color: var(--accent);
+}
+.color-palette-x {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 5px;
+}
+.color-palette-x:hover {
+  color: var(--text-1);
+  background: var(--surface);
+}

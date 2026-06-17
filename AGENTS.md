@@ -73,6 +73,15 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 
 工具→⚙设置→**划词右键翻译**（菜单 `checked`）。`selection_translate.rs` 的 `SELECTION_TRANSLATE_ENABLED`(AtomicBool)门控 `handle_right_click`——关掉后 WH_MOUSE_LL 钩子仍跑但右键不弹翻译+藏掉浮窗；存 `selection_translate.json`，`start()` 先 `load_enabled` 再挂钩。命令 `get/set_selection_translate_enabled`，前端 `api.getSelectionTranslateEnabled/setSelectionTranslateEnabled`
 
+## 桌面工具（v0.2.12，桌面专属·Dobby 抄不走）
+
+定位：只做「网页工具站做不到的桌面能力」（系统钩子/置顶浮窗/全局热键/本地文件）。常驻全局热键统一存 `tool_keys.json`，可改键，集中在**编辑→⌨ 首选项·快捷键**（`PreferencesModal.tsx`，调既有 get/set 命令统一录键；含聊天/浏览窗键）。
+
+- **桌面取色器**（`Ctrl+Alt+C`，可改键）：`color_pick_shortcut` 按下→`selection_translate::arm_color_pick()`，**复用划词翻译那个 WH_MOUSE_LL 全局鼠标钩子**进入「取色态」：光标换十字(`SetSystemCursor`，还原用 `SystemParametersInfoW(SPI_SETCURSORS)`)，**左键点哪取哪(吞掉该点击)/右键取消**。取色 = `sample_point_color(x,y)`（GDI `GetPixel`），emit `color-picked{hex,r,g,b}`。前端：`App.tsx` 复制 hex+右下角「最近色板」(左/右键复制 hex/rgb)+顶部「取色模式」横幅；**`BoardCanvas.tsx` 也监听 `color-picked`→`applyStyle({color:hex})`** 把取的色设成画板当前色（画板本就支持任意 hex）。Cargo 加了 `Win32_Graphics_Gdi`。**故意不做跟随光标放大镜**——透明置顶 GPU 画布在本机 WebView2 必翻车
+- **悬浮参考窗升级**（`RefWindow.tsx`）：右键图 → 开**独立菜单小窗**(`RefToolsWindow.tsx`，label `ref-tools`，#reftools 路由)——因为参考窗可能被缩到很小，菜单画窗内会被 webview 裁掉，故独立成窗(挂载后 `setSize` 自适应内容高、失焦自动关、物理坐标摆光标处避免跨屏/DPI 错位)。菜单项 emit `ref-apply{target,patch}` → 参考窗监听应用：镜像/灰度/反色/旋转(90°,vw/vh 铺满)/透明度/对比/亮度/点击穿透(`Ctrl+Alt+R` 切回，全局影响所有 ref 窗)/多图轮播(localStorage 传 list)。图用 `object-fit:contain`，窗口缩放只走右下角手柄(按比例 setSize)。`ref-window.json` 加了 create-webview-window/show/hide/set-focus/set-position 等权限
+- **截图**：自研框选浮层试过但**放弃**（本机 WebView2 透明/新建窗有黑屏+迟滞，反复修不顺）。改用**系统 Win+Shift+S → 画板 Ctrl+V**：画板 `onPaste` 本就支持剪贴板图片(落盘入库+上板)，零开发。相关自研代码(screenshot.rs/#shot/Ctrl+Alt+S)已全删
+- **图层顺序**：画板早有 `store.reorder(ids,"front|back|forward|backward")`，键 `]`上移/`[`下移/`Shift+]`置顶/`Shift+[`置底（不限修饰键，Alt+] 也触发）+ 右键菜单
+
 ## 已知的坑
 
 - **cargo 文件锁**：`npm run tauri dev` 的 watcher 与任何并行 cargo/构建会抢锁，可能把 watcher 抢死（vite 活着但 Rust 不再重编译、应用不重启）。规则：**dev 跑着时不要并行跑 cargo build/check**；watcher 死了就重启 dev

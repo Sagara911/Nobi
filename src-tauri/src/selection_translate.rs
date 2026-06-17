@@ -53,6 +53,60 @@ const CLIP_SENTINEL: &str = "__NOBI_SELECTION_TRANSLATE_SENTINEL__";
 static SELECTION_TRANSLATE_ENABLED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(true);
 
+/// 取色器是否处于「待取色」状态：Ctrl+Alt+C 进入，下一次左键取色、右键取消。
+/// 复用本文件的全局鼠标钩子（独占接管那一次点击，不漏给底下的程序）。
+#[cfg(windows)]
+static COLOR_PICK_ARMED: AtomicBool = AtomicBool::new(false);
+
+/// 进入取色模式：换十字光标 + 置位，由 mouse_hook 接管点击。lib.rs 的 Ctrl+Alt+C 调它。
+#[cfg(windows)]
+pub fn arm_color_pick() {
+    if COLOR_PICK_ARMED.swap(true, Ordering::SeqCst) {
+        return; // 已在取色态
+    }
+    unsafe { set_pick_cursor(true) };
+    if let Some(app) = APP.get() {
+        let _ = app.emit("color-pick-armed", ());
+    }
+}
+
+#[cfg(windows)]
+fn disarm_color_pick() {
+    if !COLOR_PICK_ARMED.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    unsafe { set_pick_cursor(false) };
+    if let Some(app) = APP.get() {
+        let _ = app.emit("color-pick-disarmed", ());
+    }
+}
+
+/// 全局换/还原光标。换：把常见几个系统光标都临时替成十字（SetSystemCursor 会销毁传入句柄，
+/// 故每个都用 CopyIcon 复制一份）；还原：SPI_SETCURSORS 从注册表重载默认光标。
+#[cfg(windows)]
+unsafe fn set_pick_cursor(on: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CopyIcon, LoadCursorW, SetSystemCursor, SystemParametersInfoW, HCURSOR, HICON, IDC_CROSS,
+        OCR_HAND, OCR_IBEAM, OCR_NORMAL, SPI_SETCURSORS, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    };
+    if on {
+        if let Ok(base) = LoadCursorW(None, IDC_CROSS) {
+            for id in [OCR_NORMAL, OCR_IBEAM, OCR_HAND] {
+                if let Ok(copy) = CopyIcon(HICON(base.0)) {
+                    let _ = SetSystemCursor(HCURSOR(copy.0), id);
+                }
+            }
+        }
+    } else {
+        let _ = SystemParametersInfoW(
+            SPI_SETCURSORS,
+            0,
+            None,
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        );
+    }
+}
+
 fn st_prefs_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     app.path()
         .app_config_dir()
@@ -155,6 +209,26 @@ unsafe extern "system" fn mouse_hook(
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, MSLLHOOKSTRUCT, WM_LBUTTONDOWN, WM_RBUTTONDOWN,
     };
+
+    // 取色模式优先：左键=取该点颜色，右键=取消；两者都吞掉这次点击（不漏给底下程序）。
+    if ncode >= 0 && COLOR_PICK_ARMED.load(Ordering::Relaxed) {
+        let w = wparam.0 as u32;
+        if w == WM_LBUTTONDOWN {
+            let info = *(lparam.0 as *const MSLLHOOKSTRUCT);
+            let (x, y) = (info.pt.x, info.pt.y);
+            disarm_color_pick();
+            if let Some(c) = crate::sample_point_color(x, y) {
+                if let Some(app) = APP.get() {
+                    let _ = app.emit("color-picked", c);
+                }
+            }
+            return windows::Win32::Foundation::LRESULT(1);
+        }
+        if w == WM_RBUTTONDOWN {
+            disarm_color_pick();
+            return windows::Win32::Foundation::LRESULT(1);
+        }
+    }
 
     if ncode >= 0 && (wparam.0 as u32 == WM_RBUTTONDOWN || wparam.0 as u32 == WM_LBUTTONDOWN) {
         let info = *(lparam.0 as *const MSLLHOOKSTRUCT);

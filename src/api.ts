@@ -58,6 +58,15 @@ export const chatBumpUnread = (label?: string) =>
   invoke<void>("chat_bump_unread", { label });
 export const chatClearUnread = () => invoke<void>("chat_clear_unread");
 
+// 桌面取色器：手动取一次光标处屏幕颜色（热键走 "color-picked" 事件，不经此）
+export interface ColorPick { hex: string; r: number; g: number; b: number }
+export const pickCursorColor = () => invoke<ColorPick>("pick_cursor_color");
+
+// 桌面工具常驻热键改键（首选项面板）：get 返回 [取色键, 参考窗穿透键]
+export const toolGetKeys = () => invoke<string[]>("tool_get_keys");
+export const toolSetKey = (which: "color" | "ref", accel: string) =>
+  invoke<void>("tool_set_key", { which, accel });
+
 // ---- 素材库 ----
 export const listAssets = () => invoke<Asset[]>("list_assets");
 export const importFolder = (path: string) => invoke<number>("import_folder", { path });

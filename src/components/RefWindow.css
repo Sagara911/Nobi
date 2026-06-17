@@ -1,4 +1,5 @@
-/* 悬浮参考浮窗样式。透明背景只在 ref 窗生效（body.ref-window），不影响主程序。 */
+/* 悬浮参考浮窗样式。透明背景只在 ref 窗生效（body.ref-window），不影响主程序。
+   工具走右键菜单，不改窗口大小 → 图永不跳。 */
 body.ref-window,
 body.ref-window #root {
   margin: 0;
@@ -10,81 +11,125 @@ body.ref-window #root {
 .rw-root {
   position: fixed;
   inset: 0;
+  overflow: hidden;
 }
 
 .rw-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
   display: block;
   user-select: none;
   -webkit-user-drag: none;
   cursor: move; /* 整图可拖动整窗 */
 }
 
-/* 顶栏：悬停才显，不挡画 */
-.rw-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 30px;
+/* 多图角标 */
+.rw-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: rgba(18, 18, 22, 0.6);
+  color: #e7e7ea;
+  font: 11px "Segoe UI", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 右键菜单 */
+.rw-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+}
+.rw-menu {
+  position: absolute;
+  z-index: 10;
+  width: 184px;
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 6px;
-  background: rgba(18, 18, 22, 0.74);
-  opacity: 0;
-  transition: opacity 0.15s;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  background: rgba(24, 24, 29, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
-.rw-root:hover .rw-bar {
-  opacity: 1;
-}
-.rw-name {
-  flex: 1;
-  min-width: 0;
-  color: #dddde2;
-  font: 12px "Segoe UI", "Microsoft YaHei", sans-serif;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: move;
-}
-.rw-bar button {
+.rw-menu button {
   background: #2a2a30;
   color: #e7e7ea;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  padding: 2px 7px;
+  border-radius: 5px;
+  padding: 5px 8px;
   font-size: 12px;
-  line-height: 1;
+  line-height: 1.1;
   cursor: pointer;
+  text-align: center;
 }
-.rw-bar button:hover {
+.rw-menu button:hover {
   background: #34343c;
 }
-.rw-bar button.on {
+.rw-menu button.on {
   background: #3b6fe0;
   border-color: #5a86f0;
   color: #fff;
 }
-.rw-close:hover {
-  background: #5a2a2a !important;
-  color: #ff9b9b;
+.rw-menu-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
 }
-.rw-opacity {
-  width: 62px;
+.rw-menu-nav button {
+  flex: 1;
+}
+.rw-menu-nav span {
+  flex: none;
+  color: #c9c9d0;
+  font-size: 11px;
+  min-width: 34px;
+  text-align: center;
+}
+.rw-menu-toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.rw-menu-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.rw-menu-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rw-menu-slider span {
+  color: #c9c9d0;
+  font-size: 11px;
+}
+.rw-menu-slider input[type="range"] {
+  width: 100%;
   cursor: pointer;
+}
+.rw-menu-close {
+  color: #ffb3b3 !important;
+}
+.rw-menu-close:hover {
+  background: #5a2a2a !important;
 }
 
 /* 右下角缩放手柄 */
 .rw-resize {
-  position: fixed;
+  position: absolute;
   right: 0;
   bottom: 0;
   width: 18px;
   height: 18px;
   cursor: nwse-resize;
+  z-index: 11;
 }
 .rw-resize::after {
   content: "";

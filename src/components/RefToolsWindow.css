@@ -1,0 +1,78 @@
+/* 参考窗右键菜单·独立小窗（透明背景，body.ref-window 已置透明） */
+.rt-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* 高度随内容（不 inset:0），挂载后据此把窗口收到刚好 */
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  box-sizing: border-box;
+  background: rgba(24, 24, 29, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font: 12px "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.rt-root button {
+  background: #2a2a30;
+  color: #e7e7ea;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.1;
+  cursor: pointer;
+  text-align: center;
+}
+.rt-root button:hover {
+  background: #34343c;
+}
+.rt-root button.on {
+  background: #3b6fe0;
+  border-color: #5a86f0;
+  color: #fff;
+}
+.rt-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.rt-nav button {
+  flex: 1;
+}
+.rt-nav span {
+  flex: none;
+  color: #c9c9d0;
+  font-size: 11px;
+  min-width: 34px;
+  text-align: center;
+}
+.rt-toggles,
+.rt-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.rt-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rt-slider span {
+  color: #c9c9d0;
+  font-size: 11px;
+}
+.rt-slider input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+}
+.rt-close {
+  color: #ffb3b3 !important;
+}
+.rt-close:hover {
+  background: #5a2a2a !important;
+}

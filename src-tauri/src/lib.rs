@@ -324,6 +324,210 @@ fn chat_opacity_up_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
         .expect("默认合法")
 }
 
+// ===== 桌面取色器（Alt+G 取光标处屏幕像素颜色）=====
+
+// ===== 桌面工具常驻热键（取色 / 参考窗穿透）——可改键，存 tool_keys.json =====
+
+#[cfg(desktop)]
+const TOOL_COLOR_ACCEL: &str = "Control+Alt+KeyC"; // 取色器默认键
+#[cfg(desktop)]
+const TOOL_REF_ACCEL: &str = "Control+Alt+KeyR"; // 参考窗穿透默认键
+#[cfg(desktop)]
+static TOOL_COLOR_KEY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+#[cfg(desktop)]
+static TOOL_REF_KEY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+#[cfg(desktop)]
+fn tool_color_accel() -> String {
+    let v = TOOL_COLOR_KEY.lock().map(|s| s.clone()).unwrap_or_default();
+    if v.trim().is_empty() { TOOL_COLOR_ACCEL.to_string() } else { v }
+}
+#[cfg(desktop)]
+fn tool_ref_accel() -> String {
+    let v = TOOL_REF_KEY.lock().map(|s| s.clone()).unwrap_or_default();
+    if v.trim().is_empty() { TOOL_REF_ACCEL.to_string() } else { v }
+}
+
+/// 取色器全局热键（常驻，默认 Ctrl+Alt+C，可改键）。
+#[cfg(desktop)]
+fn color_pick_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+    Shortcut::from_str(&tool_color_accel())
+        .or_else(|_| Shortcut::from_str(TOOL_COLOR_ACCEL))
+        .expect("默认取色热键必须合法")
+}
+
+/// 参考窗穿透切换全局热键（常驻，默认 Ctrl+Alt+R，可改键）。
+#[cfg(desktop)]
+fn ref_through_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+    Shortcut::from_str(&tool_ref_accel())
+        .or_else(|_| Shortcut::from_str(TOOL_REF_ACCEL))
+        .expect("默认参考窗热键必须合法")
+}
+
+#[cfg(desktop)]
+fn tool_keys_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path().app_config_dir().ok().map(|d| d.join("tool_keys.json"))
+}
+
+#[cfg(desktop)]
+fn save_tool_keys(app: &tauri::AppHandle) {
+    let prefs = serde_json::json!({
+        "colorPick": tool_color_accel(),
+        "refThrough": tool_ref_accel(),
+    });
+    if let Some(p) = tool_keys_path(app) {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, prefs.to_string());
+    }
+}
+
+#[cfg(desktop)]
+fn load_tool_keys(app: &tauri::AppHandle) {
+    if let Some(p) = tool_keys_path(app) {
+        if let Ok(txt) = std::fs::read_to_string(&p) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                if let Some(k) = v.get("colorPick").and_then(|x| x.as_str()) {
+                    if let Ok(mut s) = TOOL_COLOR_KEY.lock() {
+                        *s = k.to_string();
+                    }
+                }
+                if let Some(k) = v.get("refThrough").and_then(|x| x.as_str()) {
+                    if let Ok(mut s) = TOOL_REF_KEY.lock() {
+                        *s = k.to_string();
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 读桌面工具键（前端首选项展示）：返回 [取色键, 参考窗穿透键]。
+#[cfg(desktop)]
+#[tauri::command]
+fn tool_get_keys() -> Vec<String> {
+    vec![tool_color_accel(), tool_ref_accel()]
+}
+
+/// 改取色/参考窗穿透键（which = "color" | "ref"）：常驻键，注销旧→试注册新(冲突即恢复)→存盘。
+#[cfg(desktop)]
+#[tauri::command]
+fn tool_set_key(app: tauri::AppHandle, which: String, accel: String) -> Result<(), String> {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    let accel = accel.trim().to_string();
+    let new_sc = Shortcut::from_str(&accel).map_err(|e| format!("无效的快捷键：{e}"))?;
+    let old_sc = match which.as_str() {
+        "color" => color_pick_shortcut(),
+        "ref" => ref_through_shortcut(),
+        _ => return Err("未知快捷键项".into()),
+    };
+    let gs = app.global_shortcut();
+    let _ = gs.unregister(old_sc); // 常驻键，先放开旧的
+    if let Err(e) = gs.register(new_sc) {
+        let _ = gs.register(old_sc); // 失败恢复旧键
+        return Err(format!("该快捷键可能被其它软件占用，换一个试试（{e}）"));
+    }
+    let slot = match which.as_str() {
+        "color" => &TOOL_COLOR_KEY,
+        "ref" => &TOOL_REF_KEY,
+        _ => unreachable!(),
+    };
+    if let Ok(mut s) = slot.lock() {
+        *s = accel;
+    }
+    save_tool_keys(&app);
+    Ok(())
+}
+
+#[derive(serde::Serialize, Clone)]
+pub(crate) struct ColorPick {
+    hex: String,
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+/// 读屏幕上某点像素的颜色（Win32 GDI GetPixel，整屏 DC）。取色钩子按点击坐标调它。
+#[cfg(windows)]
+pub(crate) fn sample_point_color(x: i32, y: i32) -> Option<ColorPick> {
+    use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
+    unsafe {
+        let hdc = GetDC(None);
+        if hdc.0.is_null() {
+            return None;
+        }
+        let c = GetPixel(hdc, x, y);
+        ReleaseDC(None, hdc);
+        if c.0 == 0xFFFF_FFFF {
+            return None; // CLR_INVALID
+        }
+        // COLORREF 是 0x00BBGGRR
+        let (r, g, b) = ((c.0 & 0xFF) as u8, ((c.0 >> 8) & 0xFF) as u8, ((c.0 >> 16) & 0xFF) as u8);
+        Some(ColorPick {
+            hex: format!("#{r:02X}{g:02X}{b:02X}"),
+            r,
+            g,
+            b,
+        })
+    }
+}
+
+/// 读光标当前所在屏幕像素的颜色（手动命令用）。
+#[cfg(windows)]
+fn cursor_color_pick() -> Option<ColorPick> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    unsafe {
+        let mut pt = POINT::default();
+        GetCursorPos(&mut pt).ok()?;
+        sample_point_color(pt.x, pt.y)
+    }
+}
+
+/// 手动取色命令（前端按钮用）。热键路径直接走 cursor_color_pick + emit，不经此。
+#[tauri::command]
+fn pick_cursor_color() -> Result<ColorPick, String> {
+    #[cfg(windows)]
+    {
+        cursor_color_pick().ok_or_else(|| "取色失败（读屏幕像素失败）".into())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("桌面取色器仅 Windows 支持".into())
+    }
+}
+
+// ===== 悬浮参考窗·点击穿透（Ctrl+Alt+R 取消）=====
+
+/// 参考窗当前是否处于点击穿透（影响所有 ref-* 窗，同看球穿透的取舍）。
+static REF_THROUGH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 给所有 ref-* 窗设/撤点击穿透，并广播状态让窗口按钮高亮同步。
+fn apply_ref_through(app: &tauri::AppHandle, on: bool) {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+    REF_THROUGH.store(on, Ordering::Relaxed);
+    for (label, w) in app.webview_windows() {
+        if label.starts_with("ref-") {
+            let _ = w.set_ignore_cursor_events(on);
+        }
+    }
+    let _ = app.emit("ref-through", on);
+}
+
+/// 前端「穿透」按钮调它（一般传 on=true 进入穿透；取消走 Ctrl+Alt+R）。
+#[tauri::command]
+fn set_ref_click_through(app: tauri::AppHandle, on: bool) {
+    apply_ref_through(&app, on);
+}
+
 #[cfg(desktop)]
 fn chat_opacity_shortcuts() -> (
     tauri_plugin_global_shortcut::Shortcut,
@@ -1218,6 +1422,10 @@ pub fn run() {
             #[cfg(desktop)]
             load_chat_prefs(app.handle());
 
+            // 桌面工具热键（取色/参考窗穿透）自定义键——必须在下面 register 之前读回
+            #[cfg(desktop)]
+            load_tool_keys(app.handle());
+
             // 开机自启插件（Windows 走 HKCU Run 项，无需管理员）
             #[cfg(desktop)]
             {
@@ -1274,6 +1482,23 @@ pub fn run() {
                                     }
                                     return;
                                 }
+                            }
+                            // 桌面取色器：Ctrl+Alt+C 进入取色模式（光标变十字吸管），
+                            // 由全局鼠标钩子接管下一次点击取色（点哪取哪、右键取消），见 selection_translate。
+                            #[cfg(windows)]
+                            if *shortcut == color_pick_shortcut() {
+                                if event.state() == ShortcutState::Pressed {
+                                    selection_translate::arm_color_pick();
+                                }
+                                return;
+                            }
+                            // 参考窗点击穿透切换：Ctrl+Alt+R（穿透后窗口点不动，靠它切回）
+                            if *shortcut == ref_through_shortcut() {
+                                if event.state() == ShortcutState::Pressed {
+                                    let on = !REF_THROUGH.load(Ordering::Relaxed);
+                                    apply_ref_through(app, on);
+                                }
+                                return;
                             }
                             // 聊天老板键：先于看球键判定（按一下藏所有聊天窗，再按恢复）
                             if *shortcut == chat_boss_shortcut() {
@@ -1422,8 +1647,22 @@ pub fn run() {
                         })
                         .build(),
                 )?;
-                // 启动时不注册任何键——看球窗出现才占用、藏起/全关即归还（见 set_web_hotkeys
+                // 看球键启动时不注册——看球窗出现才占用、藏起/全关即归还（见 set_web_hotkeys
                 // 与 on_window_event 的生命周期管理），平时不抢系统快捷键。
+                // 但取色器 Ctrl+Alt+C 是常驻全局键（无关窗口），在此注册一次。
+                // 打印结果——被别的程序全局占用时 register 会失败，得能看见。
+                #[cfg(windows)]
+                {
+                    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                    match app.global_shortcut().register(color_pick_shortcut()) {
+                        Ok(_) => eprintln!("[取色器] 已注册全局热键 {}", tool_color_accel()),
+                        Err(e) => eprintln!("[取色器] 热键注册失败（可能被占用）：{e}"),
+                    }
+                    match app.global_shortcut().register(ref_through_shortcut()) {
+                        Ok(_) => eprintln!("[参考窗] 已注册穿透切换热键 {}", tool_ref_accel()),
+                        Err(e) => eprintln!("[参考窗] 穿透热键注册失败（可能被占用）：{e}"),
+                    }
+                }
             }
 
             // 系统托盘：关窗收进托盘（后台采集/MCP 服务不中断），点图标还原
@@ -1687,7 +1926,14 @@ pub fn run() {
             chat_get_opacity_keys,
             chat_set_opacity_key,
             chat_bump_unread,
-            chat_clear_unread
+            chat_clear_unread,
+            // 桌面取色器（Ctrl+Alt+C 常驻热键 + 手动命令）
+            pick_cursor_color,
+            // 悬浮参考窗点击穿透（Ctrl+Alt+R 取消）
+            set_ref_click_through,
+            // 桌面工具热键改键（首选项面板）
+            tool_get_keys,
+            tool_set_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

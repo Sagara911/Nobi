@@ -28,6 +28,7 @@ import {
 import Konva from "konva";
 import getStroke from "perfect-freehand";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { save as saveDialog, message as msgDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
@@ -1839,6 +1840,17 @@ export default function BoardCanvas({
     },
     [store]
   );
+
+  // 桌面取色器（Ctrl+Alt+C）取到色 → 设为画板当前颜色（编辑中=给选区文字上色，
+  // 选中形状=改其颜色，否则=之后新建文字/画笔/图形的默认色）。任意 hex 直接用。
+  useEffect(() => {
+    const un = listen<{ hex: string }>("color-picked", (e) => {
+      if (e.payload?.hex) applyStyle({ color: e.payload.hex });
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, [applyStyle]);
 
   // ---------- 文本编辑覆盖层 ----------
   let editingShape: TextShape | null = null;
