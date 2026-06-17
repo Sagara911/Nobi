@@ -832,6 +832,8 @@ fn show_in_alt_tab(window: &tauri::WebviewWindow) {
             let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
             let new = (ex & !(WS_EX_TOOLWINDOW.0 as isize)) | WS_EX_APPWINDOW.0 as isize;
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+            // 去掉 toolwindow + SWP_FRAMECHANGED 重算非客户区 → 系统标题栏即带上最小化/最大化键。
+            // 不做 hide/show（那只为任务栏注册，会闪一下；最小/最大化键的出现只需去 toolwindow）。
             let _ = SetWindowPos(
                 hwnd,
                 None,
@@ -843,9 +845,6 @@ fn show_in_alt_tab(window: &tauri::WebviewWindow) {
             );
         }
     }
-    // WS_EX_APPWINDOW 要隐藏再显示才会在任务栏注册——快速 hide/show 一下
-    let _ = window.hide();
-    let _ = window.show();
 }
 
 /// 前端创建隐藏窗后调它：先打 WS_EX_TOOLWINDOW（隐藏态设才干净生效）再显示。
@@ -908,6 +907,11 @@ static WEB_OPACITY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::n
 /// 直开窗当前是否显示标题栏（Alt+3 切）。初始 false＝无边框，跟建窗时 decorations:false 一致。
 #[cfg(desktop)]
 static WEB_DECOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 已打过隐身标记的便签窗 label（首次获焦打一次即可）。BTreeSet::new() 是 const，能用于 static。
+/// 避免每次获焦都重打 SWP_FRAMECHANGED——那会打断用户对窗口的最大化/最小化操作（闪一帧又复原）。
+static STEALTH_DONE: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
 
 /// 直开窗是否点击穿透（Alt+4 切）：开启后鼠标穿过去点下面的软件，关掉才能再操作本窗。
 #[cfg(desktop)]
@@ -1829,9 +1833,25 @@ pub fn run() {
             #[cfg(windows)]
             if matches!(event, tauri::WindowEvent::Focused(true)) {
                 let l = window.label();
-                if l.starts_with("web-d") || is_chat_label(l) {
-                    if let Ok(hwnd) = window.hwnd() {
-                        hide_hwnd_from_alt_tab(hwnd);
+                if l.starts_with("web-d") {
+                    // 浏览窗：标题栏模式(WEB_DECOR on)下别重打隐身——否则刚显示的最小/最大化键
+                    // 会被立刻砍掉(只闪一帧)。收起标题栏时仍按 focus 重隐身。
+                    if !WEB_DECOR.load(std::sync::atomic::Ordering::Relaxed) {
+                        if let Ok(hwnd) = window.hwnd() {
+                            hide_hwnd_from_alt_tab(hwnd);
+                        }
+                    }
+                } else if is_chat_label(l) {
+                    // 便签：只在首次获焦打一次隐身。之后每次获焦都打的话，SWP_FRAMECHANGED
+                    // 会打断用户的最大化/最小化（闪一帧又复原），见用户反馈。
+                    let first = STEALTH_DONE
+                        .lock()
+                        .map(|mut s| s.insert(l.to_string()))
+                        .unwrap_or(false);
+                    if first {
+                        if let Ok(hwnd) = window.hwnd() {
+                            hide_hwnd_from_alt_tab(hwnd);
+                        }
                     }
                 }
             }
@@ -1862,6 +1882,10 @@ pub fn run() {
                 use std::sync::atomic::Ordering;
                 if matches!(event, tauri::WindowEvent::Destroyed) {
                     let gone = window.label().to_string();
+                    #[cfg(windows)]
+                    if let Ok(mut s) = STEALTH_DONE.lock() {
+                        s.remove(&gone); // 同 label 窗重开时能再次首焦隐身
+                    }
                     let left = window
                         .app_handle()
                         .webview_windows()
