@@ -78,6 +78,7 @@ async function openConnWindow(profileId: string, room: string) {
     minWidth: 300,
     minHeight: 360,
     resizable: true,
+    alwaysOnTop: true, // 便签置顶，像便利贴一样浮在其它窗口上
     dragDropEnabled: false, // 走 HTML5 拖放收桌面图片
     visible: false, // 隐藏建窗，窗口 mount 后调 stealth_show 打 toolwindow 再显示（不进 Alt+Tab/任务栏）
   });
@@ -97,6 +98,7 @@ async function openLauncherWindow() {
     width: 360,
     height: 520,
     resizable: true,
+    alwaysOnTop: true, // 启动器也置顶，和便签一致
     visible: false, // 同上，stealth_show 后再显示
   });
 }
