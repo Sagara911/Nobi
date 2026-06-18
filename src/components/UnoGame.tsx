@@ -25,6 +25,8 @@ export type GEvent =
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const TURN_SECS = 30; // 每回合限时；超时只闪烁提醒，不自动操作
+const SUBPHASE_TIMEOUT_MS = 30000; // 质疑/替换子阶段兜底：卡太久房主用默认结果强制收尾，避免死等
+const HOST_GONE_MS = 15000; // 超过这么久没收到房主同步（心跳每 3s 一次）→ 视为房主可能掉线，给出接管入口
 
 const COLOR_HEX: Record<UnoColor, string> = { r: "#e0413a", y: "#e8b21f", g: "#3a9e4d", b: "#2f6fdd" };
 const COLOR_NAME: Record<UnoColor, string> = { r: "红", y: "黄", g: "绿", b: "蓝" };
@@ -91,6 +93,8 @@ export default function UnoGame({
   const hostStateRef = useRef<UnoState | null>(null);
   const processedAids = useRef<Set<string>>(new Set());
   const seenVersion = useRef<Record<string, number>>({});
+  const lastStateAt = useRef<number>(Date.now()); // 最近一次收到权威快照的时刻（判房主是否掉线）
+  const [hostGone, setHostGone] = useState(false); // 长时间收不到房主同步 → 显示「接管房主」入口
   const lobbyRef = useRef(lobby);
   lobbyRef.current = lobby;
   const sendRef = useRef(sendGame);
@@ -119,6 +123,8 @@ export default function UnoGame({
       }
       if (ev.k === "state") {
         const s = ev.s;
+        lastStateAt.current = Date.now(); // 收到任意权威快照（含心跳）即说明房主在线
+        setHostGone(false);
         const seen = seenVersion.current[s.gid] || 0;
         if (s.v <= seen) return; // 旧快照忽略
         seenVersion.current[s.gid] = s.v;
@@ -153,6 +159,42 @@ export default function UnoGame({
     }, 3000);
     return () => window.clearInterval(t);
   }, [amHost]);
+
+  // 房主：质疑/替换子阶段超时兜底——卡太久（有人不表态/出牌人不操作）就用默认结果强制收尾。
+  // 质疑→剩余未表态者一律按「不质疑」；替换→放弃。复用现成引擎逻辑，不引入新规则。
+  const chFrom = gstate?.challenge?.from;
+  const swFrom = gstate?.pendingSwap?.from;
+  useEffect(() => {
+    if (!amHost || (!chFrom && !swFrom)) return;
+    const t = window.setTimeout(() => {
+      let s = hostStateRef.current;
+      if (!s) return;
+      if (s.challenge) {
+        for (const pid of [...s.challenge.pending]) {
+          s = applyAction(s, { type: "challenge", player: pid, doChallenge: false });
+        }
+      } else if (s.pendingSwap) {
+        s = applyAction(s, { type: "swap", player: s.pendingSwap.from }); // 放弃替换
+      } else {
+        return;
+      }
+      hostStateRef.current = s;
+      sendRef.current({ k: "state", s });
+    }, SUBPHASE_TIMEOUT_MS);
+    return () => window.clearTimeout(t);
+  }, [amHost, chFrom, swFrom]);
+
+  // 非房主：对局进行中若长时间收不到房主同步（心跳应每 3s 一次），判房主可能掉线 → 显示接管入口
+  useEffect(() => {
+    if (amHost || gstate?.status !== "playing") {
+      setHostGone(false);
+      return;
+    }
+    const t = window.setInterval(() => {
+      if (Date.now() - lastStateAt.current > HOST_GONE_MS) setHostGone(true);
+    }, 2000);
+    return () => window.clearInterval(t);
+  }, [amHost, gstate?.status]);
 
   // 收到新快照（自己的动作生效或别人出牌）即清掉「出牌中」
   useEffect(() => {
@@ -194,6 +236,22 @@ export default function UnoGame({
     hostStateRef.current = null;
     processedAids.current = new Set();
     seenVersion.current = {};
+    setHostGone(false);
+  };
+
+  // 接管房主：房主疑似掉线时，任一在线玩家可点此用本地最近一份权威态接管，让对局继续。
+  // 用本地 gstate 作种子（心跳保证 ≤3s 新）；广播新 lobby 让各端改认我为房主（last-write-wins，旧房主回来会让位）。
+  const takeOverHost = () => {
+    const g = gstate;
+    if (!g) return;
+    hostStateRef.current = g;
+    processedAids.current = new Set();
+    seenVersion.current[g.gid] = g.v;
+    const lb = { gid: g.gid, host: myId, players: g.players };
+    setLobby(lb); // 本地即成为房主 → amHost=true → 开始处理动作 + 心跳
+    setHostGone(false);
+    sendGame({ k: "lobby", ...lb }); // 通知各端房主换人
+    sendGame({ k: "state", s: g }); // 重申当前态
   };
 
   // —— 房主操作 ——
@@ -282,6 +340,9 @@ export default function UnoGame({
   const ch = g?.challenge; // 质疑待决
   const canChallenge = !!ch && ch.pending.includes(myId); // 我还没表态，可质疑/不质疑
   const iAmChallenged = !!ch && ch.from === myId; // 我是被质疑的出牌人
+  // 房主掉线时的确定性继任者：座位顺序里第一个不是（疑似掉线的）房主的玩家——各端算出同一人，避免多人同时接管脑裂
+  const successorId = g && lobby ? g.players.find((p) => p.id !== lobby.host)?.id : undefined;
+  const iAmSuccessor = !!successorId && successorId === myId;
 
   // 手牌排序：先颜色(红黄绿蓝、变色最后)，再点数/功能，看着顺手
   const COLOR_RANK: Record<string, number> = { r: 0, y: 1, g: 2, b: 3, w: 4 };
@@ -305,8 +366,8 @@ export default function UnoGame({
         </div>
       </div>
 
-      {/* 没有 lobby：开局 / 等待 */}
-      {!inLobby && (
+      {/* 没有 lobby 且没有对局态：开局 / 等待（重连后只有 state 没 lobby 时，不显示开局页、直接进牌桌） */}
+      {!inLobby && !g && (
         <div className="uno-idle">
           <p>和群里的朋友来一局 UNO（2–4 人）。</p>
           <button className="uno-btn primary" onClick={createLobby}>开一局（我当房主）</button>
@@ -347,6 +408,21 @@ export default function UnoGame({
       {/* 对局中 / 结束 */}
       {g && (
         <div className="uno-board">
+          {/* 房主疑似掉线：由确定性继任者接管，避免全场冻结；其余人看提示或可退出 */}
+          {hostGone && !amHost && (
+            <div className="uno-hostgone">
+              {iAmSuccessor ? (
+                <>
+                  <span>房主好像掉线了，对局可能卡住。</span>
+                  <button className="uno-btn primary" onClick={takeOverHost}>我来接管房主</button>
+                </>
+              ) : (
+                <span>
+                  房主好像掉线了，等 {g.players.find((p) => p.id === successorId)?.name || "下一位"} 接管，或点右上角「退出」。
+                </span>
+              )}
+            </div>
+          )}
           {/* 其他玩家 + 手牌数 + 当前回合 */}
           <div className="uno-seats">
             {g.players.map((p, i) => {

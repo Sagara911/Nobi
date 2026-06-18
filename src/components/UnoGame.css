@@ -474,6 +474,25 @@
   margin-top: 14px;
 }
 
+/* 房主掉线提示条 */
+.uno-hostgone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: #5a2a2a;
+  border: 1px solid #c0392b;
+  color: #ffd6d0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.uno-hostgone .uno-btn {
+  flex: none;
+}
+
 /* 质疑表态按钮组：紫框提示这是质疑环节 */
 .uno-actions.uno-challenge {
   border: 1px solid #a06bff;
