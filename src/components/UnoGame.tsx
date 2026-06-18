@@ -24,6 +24,7 @@ export type GEvent =
   | { k: "action"; gid: string; aid: string; a: UnoAction };
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+const TURN_SECS = 30; // 每回合限时；超时只闪烁提醒，不自动操作
 
 const COLOR_HEX: Record<UnoColor, string> = { r: "#e0413a", y: "#e8b21f", g: "#3a9e4d", b: "#2f6fdd" };
 const COLOR_NAME: Record<UnoColor, string> = { r: "红", y: "黄", g: "绿", b: "蓝" };
@@ -75,6 +76,7 @@ export default function UnoGame({
   const [gstate, setGstate] = useState<UnoState | null>(null);
   const [colorPick, setColorPick] = useState<string | null>(null); // 待选色的变色牌 cardId
   const [pending, setPending] = useState(false); // 已发出动作、等权威快照回来（点击反馈 + 防连点）
+  const [secsLeft, setSecsLeft] = useState(TURN_SECS); // 当前回合倒计时
 
   // 房主权威状态 + 去重
   const hostStateRef = useRef<UnoState | null>(null);
@@ -136,6 +138,22 @@ export default function UnoGame({
   useEffect(() => {
     setPending(false);
   }, [gstate]);
+
+  // 回合倒计时：每个新回合本地起计时；归零只闪烁提醒（不替任何人出牌/摸牌/跳过）。
+  useEffect(() => {
+    if (!gstate || gstate.status !== "playing") {
+      setSecsLeft(TURN_SECS);
+      return;
+    }
+    const startedAt = Date.now();
+    setSecsLeft(TURN_SECS);
+    const tick = window.setInterval(() => {
+      const left = TURN_SECS - Math.floor((Date.now() - startedAt) / 1000);
+      setSecsLeft(Math.max(0, left));
+      if (left <= 0) window.clearInterval(tick); // 到点就停，闪烁交给 UI
+    }, 250);
+    return () => window.clearInterval(tick);
+  }, [gstate?.gid, gstate?.v, gstate?.status]);
 
   // 退出当前对局 / 大厅，回到初始（任何人随时可用——结算卡死的逃生口）
   const reset = () => {
@@ -339,6 +357,9 @@ export default function UnoGame({
                     ? `轮到你：接同类把 +${pend} 甩给下家，或摸 ${pend} 张`
                     : "轮到你了"
                   : `等待 ${g.players[g.turn]?.name} 出牌…`}
+              <span className={`uno-timer${secsLeft === 0 ? " over" : secsLeft <= 5 ? " urgent" : ""}`}>
+                {secsLeft === 0 ? "⏰超时" : `⏱${secsLeft}`}
+              </span>
             </div>
           )}
 

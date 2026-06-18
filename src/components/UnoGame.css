@@ -286,6 +286,32 @@
   text-align: center;
   margin-top: 2px;
 }
+.uno-timer {
+  margin-left: 8px;
+  font-weight: 700;
+  color: #9a9ba2;
+}
+.uno-turnbar.mine .uno-timer {
+  color: #1c1d22;
+}
+.uno-timer.urgent {
+  color: #fff;
+  background: #e0413a;
+  border-radius: 8px;
+  padding: 0 7px;
+}
+.uno-timer.over {
+  color: #fff;
+  background: #e0413a;
+  border-radius: 8px;
+  padding: 0 7px;
+  animation: uno-blink 0.7s ease-in-out infinite;
+}
+@keyframes uno-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
 .uno-over {
   text-align: center;
   padding: 10px;
