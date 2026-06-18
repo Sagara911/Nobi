@@ -96,7 +96,8 @@ function App() {
       const next = !vaultUnlocked;
       setVaultUnlocked(next);
       void api.vaultSet(next);
-      setStatus(next ? "🔓 已解锁隐藏功能（浏览窗 / 便签）" : "🔒 已锁定并隐藏");
+      // 锁定时必须静默：状态栏一旦写「已锁定并隐藏」就等于挂牌告诉老板此处有暗格，破坏整个威胁模型
+      setStatus(next ? "🔓 已解锁隐藏功能（浏览窗 / 便签）" : "");
     }
   }, [vaultUnlocked]);
   const [recentColors, setRecentColors] = useState<api.ColorPick[]>([]); // 桌面取色器最近取的颜色
