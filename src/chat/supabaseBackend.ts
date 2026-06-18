@@ -9,6 +9,7 @@ import type {
   ConnStatus,
   OutgoingAsset,
 } from "./types";
+import { getBubbleColor } from "./config";
 
 const TABLE = "messages";
 const BUCKET = "chat-assets";
@@ -24,6 +25,7 @@ interface Row {
   asset_url: string | null;
   asset_name: string | null;
   avatar?: string | null;
+  bubble?: string | null;
   created_at: string;
 }
 
@@ -43,6 +45,7 @@ function rowToMessage(r: Row): ChatMessage {
     clientId: r.client_id,
     kind: r.kind,
     avatar: r.avatar ?? undefined,
+    bubble: r.bubble ?? undefined,
     body: r.body ?? undefined,
     assetUrl: r.asset_url ?? undefined,
     assetName: r.asset_name ?? undefined,
@@ -104,16 +107,27 @@ export class SupabaseBackend implements ChatBackend {
     this.emitStatus("disconnected");
   }
 
+  /** 插一行；若老表还没 bubble 列（未跑迁移），自动去掉 bubble 重发——颜色广播优雅降级，不影响发消息。 */
+  private async insertRow(row: Record<string, unknown>): Promise<void> {
+    let { error } = await this.client.from(TABLE).insert(row);
+    if (error && "bubble" in row && /bubble/i.test(error.message)) {
+      const { bubble: _omit, ...rest } = row;
+      ({ error } = await this.client.from(TABLE).insert(rest));
+    }
+    if (error) throw new Error(error.message);
+  }
+
   async sendText(text: string): Promise<void> {
-    const { error } = await this.client.from(TABLE).insert({
+    const bubble = getBubbleColor(); // 本机偏好，发送时现读，随消息广播
+    await this.insertRow({
       room: this.cfg.room,
       sender: this.cfg.nickname,
       client_id: this.cfg.clientId,
       kind: "text",
       body: text,
       ...(this.cfg.avatar ? { avatar: this.cfg.avatar } : {}),
+      ...(bubble ? { bubble } : {}),
     });
-    if (error) throw new Error(error.message);
   }
 
   async sendAsset(asset: OutgoingAsset, caption?: string): Promise<void> {
@@ -136,7 +150,8 @@ export class SupabaseBackend implements ChatBackend {
     const { data } = this.client.storage.from(BUCKET).getPublicUrl(objectPath);
 
     // 4. 广播 image 消息
-    const { error } = await this.client.from(TABLE).insert({
+    const bubble = getBubbleColor();
+    await this.insertRow({
       room: this.cfg.room,
       sender: this.cfg.nickname,
       client_id: this.cfg.clientId,
@@ -145,8 +160,8 @@ export class SupabaseBackend implements ChatBackend {
       asset_url: data.publicUrl,
       asset_name: asset.name,
       ...(this.cfg.avatar ? { avatar: this.cfg.avatar } : {}),
+      ...(bubble ? { bubble } : {}),
     });
-    if (error) throw new Error(error.message);
   }
 
   updateIdentity(nickname: string, avatar?: string): void {

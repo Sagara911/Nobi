@@ -78,3 +78,43 @@
   opacity: 0.45;
   cursor: default;
 }
+/* 表情按钮（在输入框左侧） */
+.gchat-emoji-btn {
+  flex: none;
+  background: #34363b !important;
+  padding: 6px 8px !important;
+  font-size: 16px;
+  line-height: 1;
+}
+.gchat-emoji-btn.on {
+  background: #3f4148 !important;
+}
+
+/* 表情面板：浮在输入条上方 */
+.gchat-emoji {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 46px;
+  z-index: 61;
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  padding: 8px;
+  max-height: 132px;
+  overflow-y: auto;
+  background: #232428;
+  border-top: 1px solid #34363b;
+}
+.gchat-emoji button {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1.4;
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.gchat-emoji button:hover {
+  background: #34363b;
+}

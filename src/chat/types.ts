@@ -17,6 +17,8 @@ export interface ChatMessage {
   kind: "text" | "image" | "video";
   /** 发送者头像（emoji，可空→收端用默认彩色首字头像） */
   avatar?: string;
+  /** 发送者选的气泡颜色（#rrggbb，随消息广播→各端按发送者的颜色渲染；空→默认） */
+  bubble?: string;
   /** 文本内容；图片/视频消息里作为图注（可空） */
   body?: string;
   /** 图片/视频消息的可访问 URL */

@@ -21,11 +21,13 @@ create table if not exists public.messages (
   body        text,                                   -- 文本内容 / 图注
   asset_url   text,                                   -- 图片/视频消息的公开 URL
   asset_name  text,
-  avatar      text                                    -- 发送者头像 emoji
+  avatar      text,                                   -- 发送者头像 emoji
+  bubble      text                                    -- 发送者气泡颜色 #rrggbb
 );
 
--- 老表升级：加头像列（已存在则跳过）
+-- 老表升级：加头像列 / 气泡色列（已存在则跳过）
 alter table public.messages add column if not exists avatar text;
+alter table public.messages add column if not exists bubble text;
 
 create index if not exists messages_room_created_idx
   on public.messages (room, created_at);

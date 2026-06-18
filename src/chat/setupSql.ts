@@ -15,11 +15,13 @@ create table if not exists public.messages (
   body        text,
   asset_url   text,
   asset_name  text,
-  avatar      text
+  avatar      text,
+  bubble      text
 );
 create index if not exists messages_room_created_idx on public.messages (room, created_at);
--- 老表升级：加头像列（已存在则跳过）
+-- 老表升级：加头像列 / 气泡色列（已存在则跳过）
 alter table public.messages add column if not exists avatar text;
+alter table public.messages add column if not exists bubble text;
 
 -- 2. 行级安全（任何拿到 anon key 的人可读写——小圈子够用）
 alter table public.messages enable row level security;

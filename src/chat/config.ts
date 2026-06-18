@@ -139,6 +139,25 @@ export function setBubbleColor(c: string): void {
   }
 }
 
+/** 常用 emoji（聊天框 + 游戏弹幕共用，点一下插进输入框） */
+export const EMOJIS = [
+  "😀","😄","😁","😂","🤣","😊","😍","😘","😎","🤔",
+  "😅","😭","😡","🥺","😴","🤩","😏","😤","🥳","😇",
+  "👍","👎","🙏","👏","💪","👌","🤙","🙌","👀","🤝",
+  "❤️","🔥","✨","💯","🎉","🌹","☕","🍻","🐶","🐱",
+];
+
+/** 按气泡底色亮度选可读文字色：浅底→深字，深底→白字 */
+export function readableText(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return "#e6e6ea";
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  // 相对亮度（sRGB 近似）
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#1c1c28" : "#fff";
+}
+
 // ===== 连接档案（多套后端）=====
 
 export interface ChatProfile {

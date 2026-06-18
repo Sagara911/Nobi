@@ -40,6 +40,7 @@ import type {
   ConnStatus,
   OutgoingAsset,
 } from "./types";
+import { getBubbleColor } from "./config";
 
 interface WireMessage {
   type: "message";
@@ -49,6 +50,7 @@ interface WireMessage {
   clientId: string;
   kind: "text" | "image" | "video";
   avatar?: string;
+  bubble?: string;
   body?: string;
   assetUrl?: string;
   assetName?: string;
@@ -126,6 +128,7 @@ export class CustomServerBackend implements ChatBackend {
               clientId: frame.clientId,
               kind: frame.kind,
               avatar: frame.avatar,
+              bubble: frame.bubble,
               body: frame.body,
               assetUrl: frame.assetUrl,
               assetName: frame.assetName,
@@ -158,6 +161,7 @@ export class CustomServerBackend implements ChatBackend {
         sender: this.cfg.nickname,
         clientId: this.cfg.clientId,
         avatar: this.cfg.avatar || undefined,
+        bubble: getBubbleColor() || undefined,
         body: text,
       }),
     );
@@ -195,6 +199,7 @@ export class CustomServerBackend implements ChatBackend {
         sender: this.cfg.nickname,
         clientId: this.cfg.clientId,
         avatar: this.cfg.avatar || undefined,
+        bubble: getBubbleColor() || undefined,
         assetUrl: url,
         assetName: asset.name,
         body: caption || undefined,
@@ -236,6 +241,8 @@ export class CustomServerBackend implements ChatBackend {
         sender: f.sender,
         clientId: f.clientId,
         kind: f.kind,
+        avatar: f.avatar,
+        bubble: f.bubble,
         body: f.body,
         assetUrl: f.assetUrl,
         assetName: f.assetName,

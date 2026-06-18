@@ -24,6 +24,8 @@ import {
   getBubbleColor,
   setBubbleColor,
   BUBBLE_COLORS,
+  EMOJIS,
+  readableText,
   AVATAR_CHOICES,
   fileToAvatar,
   isImageAvatar,
@@ -129,29 +131,10 @@ function fmtAccel(a: string): string {
     .join(" + ");
 }
 
-// 常用 emoji（点一下插进输入框）
-const EMOJIS = [
-  "😀","😄","😁","😂","🤣","😊","😍","😘","😎","🤔",
-  "😅","😭","😡","🥺","😴","🤩","😏","😤","🥳","😇",
-  "👍","👎","🙏","👏","💪","👌","🤙","🙌","👀","🤝",
-  "❤️","🔥","✨","💯","🎉","🌹","☕","🍻","🐶","🐱",
-];
-
 function hashHue(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
   return h;
-}
-
-/** 按气泡底色亮度选可读文字色：浅底→深字，深底→白字 */
-function readableText(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return "#e6e6ea";
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  // 相对亮度（sRGB 近似）
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.62 ? "#1c1c28" : "#fff";
 }
 
 /** 头像：图片(data/http)显图，emoji 显 emoji，否则名字首字 + 确定性配色（默认） */
@@ -744,7 +727,10 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
               <MsgAvatar name={m.sender} avatar={m.avatar} />
               <div className="chat-col">
                 {!mine && <div className="chat-sender">{m.sender}</div>}
-                <div className={`chat-bubble${atMe ? " at-me" : ""}`}>
+                <div
+                  className={`chat-bubble${atMe ? " at-me" : ""}`}
+                  style={m.bubble ? { background: m.bubble, color: readableText(m.bubble) } : undefined}
+                >
                   {m.kind === "image" && m.assetUrl ? (
                     <a href={m.assetUrl} target="_blank" rel="noreferrer">
                       <img className="chat-img" src={m.assetUrl} alt={m.assetName || "图片"} />
