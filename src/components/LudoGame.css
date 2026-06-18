@@ -8,6 +8,7 @@
   background: #15161a;
   color: #e6e6ea;
   overflow-y: auto;
+  padding-bottom: 46px; /* 给游戏内聊天的底部输入条留位 */
 }
 .ludo-head {
   flex: none;

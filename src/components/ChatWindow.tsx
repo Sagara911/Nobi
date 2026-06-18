@@ -50,6 +50,7 @@ import {
 import "./ChatWindow.css";
 import UnoGame, { UNO_TAG, type GEvent } from "./UnoGame";
 import LudoGame, { LUDO_TAG, type LEvent } from "./LudoGame";
+import GameChat from "./GameChat";
 
 const LAUNCHER_LABEL = "chat";
 
@@ -498,6 +499,14 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     }
   };
 
+  // 游戏内聊天用：直接发一条文本（不经主输入框的 draft）
+  const sendChatText = (text: string) => {
+    const t = text.trim();
+    const backend = backendRef.current;
+    if (!t || !backend) return;
+    void backend.sendText(t).catch((e) => setNotice(`发送失败：${String(e)}`));
+  };
+
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
@@ -625,6 +634,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
         subscribeGame={subscribeLudo}
         onClose={() => setOpenGame(null)}
       />
+      {openGame && <GameChat messages={messages} myId={cfg.clientId} onSend={sendChatText} />}
 
       {editId && (
         <div className="chat-idedit">

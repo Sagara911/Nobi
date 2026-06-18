@@ -8,6 +8,7 @@
   background: #15161a;
   color: #e6e6ea;
   overflow-y: auto;
+  padding-bottom: 46px; /* 给游戏内聊天的底部输入条留位，按钮不被盖 */
 }
 .uno-head {
   flex: none;
@@ -130,13 +131,15 @@
   border-radius: 12px;
   padding: 3px 9px;
 }
-.uno-seat.turn {
-  border-color: #e8b21f;
-  color: #ffd866;
-  font-weight: 600;
-}
 .uno-seat.me {
   background: #25303f;
+}
+/* turn 放在 me 之后，保证「轮到我」时金色高亮压过 me 的蓝底 */
+.uno-seat.turn {
+  background: #e8b21f;
+  border-color: #e8b21f;
+  color: #1c1d22;
+  font-weight: 700;
 }
 .uno-dir {
   margin-left: auto;
@@ -146,9 +149,32 @@
 .uno-table {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   justify-content: center;
-  padding: 12px 0;
+  padding: 12px 8px;
+  border: 2px solid transparent; /* borderColor 由内联当前色给 */
+  border-radius: 12px;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.uno-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.uno-center-label {
+  font-size: 10px;
+  color: #cfcfd6;
+}
+.uno-curcolor-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.uno-curcolor-label {
+  font-size: 10px;
+  color: #cfcfd6;
 }
 .uno-pile {
   display: flex;
@@ -204,6 +230,13 @@
 .uno-card.uno-wild {
   background: conic-gradient(#e0413a, #e8b21f, #3a9e4d, #2f6fdd, #e0413a);
 }
+.uno-card.big {
+  min-width: 54px;
+  height: 80px;
+  font-size: 26px;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+}
 .uno-card.playable {
   cursor: pointer;
 }
@@ -221,15 +254,37 @@
   opacity: 0.4;
 }
 
+.uno-seat.uno1 {
+  border-color: #e8b21f;
+  color: #ffd866;
+  font-weight: 600;
+}
+.uno-stack {
+  background: #e0413a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-weight: 800;
+  margin-right: 6px;
+}
 .uno-turnbar {
   text-align: center;
   font-size: 13px;
   color: #9a9ba2;
-  padding: 4px;
+  padding: 6px;
+  border-radius: 8px;
 }
 .uno-turnbar.mine {
-  color: #ffd866;
-  font-weight: 700;
+  color: #1c1d22;
+  background: #ffd866;
+  font-weight: 800;
+  font-size: 14px;
+}
+.uno-hand-label {
+  font-size: 11px;
+  color: #9a9ba2;
+  text-align: center;
+  margin-top: 2px;
 }
 .uno-over {
   text-align: center;

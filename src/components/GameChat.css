@@ -1,0 +1,80 @@
+/* 游戏内聊天（弹幕版）：弹幕层飘在游戏区上方，底部一条常驻输入条 */
+
+/* 弹幕层：盖住游戏区（底部留出输入条），不挡点击 */
+.dm-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 46px;
+  z-index: 58;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dm-item {
+  position: absolute;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.28);
+  padding: 1px 9px;
+  border-radius: 11px;
+  animation: dm-fly 8s linear forwards;
+  will-change: left;
+}
+.dm-item.mine {
+  color: #ffd866;
+}
+@keyframes dm-fly {
+  from {
+    left: 100%;
+  }
+  to {
+    left: -100%;
+  }
+}
+
+/* 底部常驻输入条 */
+.gchat-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  gap: 6px;
+  padding: 7px 10px;
+  background: #1c1d22;
+  border-top: 1px solid #34363b;
+}
+.gchat-bar input {
+  flex: 1;
+  min-width: 0;
+  background: #14151a;
+  border: 1px solid #34363b;
+  border-radius: 8px;
+  color: #e6e6ea;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.gchat-bar input:focus {
+  border-color: #2f6fdd;
+}
+.gchat-bar button {
+  flex: none;
+  background: #2f6fdd;
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.gchat-bar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

@@ -40,12 +40,12 @@ function cardFace(card: UnoCard): string {
   }
 }
 
-function CardChip({ card, dim, onClick }: { card: UnoCard; dim?: boolean; onClick?: () => void }) {
+function CardChip({ card, dim, big, onClick }: { card: UnoCard; dim?: boolean; big?: boolean; onClick?: () => void }) {
   const isWild = card.color === "w";
   const style = isWild ? undefined : { background: COLOR_HEX[card.color as UnoColor] };
   return (
     <button
-      className={`uno-card${isWild ? " uno-wild" : ""}${dim ? " dim" : ""}${onClick ? " playable" : ""}`}
+      className={`uno-card${isWild ? " uno-wild" : ""}${big ? " big" : ""}${dim ? " dim" : ""}${onClick ? " playable" : ""}`}
       style={style}
       disabled={!onClick}
       onClick={onClick}
@@ -215,6 +215,15 @@ export default function UnoGame({
   const legal = g ? legalCardIds(g, myId) : new Set<string>();
   const myHand = g?.hands[myId] || [];
   const top = g?.discard[g.discard.length - 1];
+  const pend = g?.pendingDraw ?? 0; // 叠牌待罚数
+
+  // 手牌排序：先颜色(红黄绿蓝、变色最后)，再点数/功能，看着顺手
+  const COLOR_RANK: Record<string, number> = { r: 0, y: 1, g: 2, b: 3, w: 4 };
+  const valRank = (v: string) =>
+    /^[0-9]$/.test(v) ? Number(v) : ({ skip: 10, rev: 11, d2: 12, wild: 13, wd4: 14 } as Record<string, number>)[v] ?? 99;
+  const sortedHand = [...myHand].sort(
+    (a, b) => COLOR_RANK[a.color] - COLOR_RANK[b.color] || valRank(a.value) - valRank(b.value),
+  );
 
   return (
     <div className="uno-overlay">
@@ -272,25 +281,39 @@ export default function UnoGame({
         <div className="uno-board">
           {/* 其他玩家 + 手牌数 + 当前回合 */}
           <div className="uno-seats">
-            {g.players.map((p, i) => (
-              <span key={p.id} className={`uno-seat${i === g.turn ? " turn" : ""}${p.id === myId ? " me" : ""}`}>
-                {p.name} {p.id === myId ? "" : `(${g.hands[p.id]?.length ?? 0})`}
-                {i === g.turn && g.status === "playing" ? " ←" : ""}
-              </span>
-            ))}
+            {g.players.map((p, i) => {
+              const cnt = g.hands[p.id]?.length ?? 0;
+              const uno = cnt === 1; // 剩 1 张高亮提醒
+              return (
+                <span
+                  key={p.id}
+                  className={`uno-seat${i === g.turn ? " turn" : ""}${p.id === myId ? " me" : ""}${uno ? " uno1" : ""}`}
+                >
+                  {p.name} {p.id === myId ? "" : `(${cnt})`}
+                  {uno ? " ⚠UNO" : ""}
+                  {i === g.turn && g.status === "playing" ? " ←" : ""}
+                </span>
+              );
+            })}
             <span className="uno-dir">{g.dir === 1 ? "顺序 ↻" : "逆序 ↺"}</span>
           </div>
 
-          {/* 牌桌：弃牌顶 + 当前颜色 + 牌堆 */}
-          <div className="uno-table">
+          {/* 牌桌：整片按当前颜色染色（一眼看清现在是什么色），中间放大「要压的牌」 */}
+          <div className="uno-table" style={{ background: `${COLOR_HEX[g.curColor]}26`, borderColor: `${COLOR_HEX[g.curColor]}` }}>
             <div className="uno-pile">
-              <span className="uno-pile-label">牌堆 {g.drawPile.length}</span>
-              <div className="uno-back">UNO</div>
+              <span className="uno-pile-label">牌堆</span>
+              <div className="uno-back">{g.drawPile.length}</div>
             </div>
-            {top && <CardChip card={top} />}
-            <span className="uno-curcolor" style={{ background: COLOR_HEX[g.curColor] }} title="当前颜色">
-              {COLOR_NAME[g.curColor]}
-            </span>
+            <div className="uno-center">
+              <span className="uno-center-label">↓ 压这张</span>
+              {top && <CardChip card={top} big />}
+            </div>
+            <div className="uno-curcolor-box">
+              <span className="uno-curcolor-label">当前色</span>
+              <span className="uno-curcolor" style={{ background: COLOR_HEX[g.curColor] }} title="当前颜色">
+                {COLOR_NAME[g.curColor]}
+              </span>
+            </div>
           </div>
 
           {/* 状态提示 */}
@@ -308,13 +331,21 @@ export default function UnoGame({
             </div>
           ) : (
             <div className={`uno-turnbar${myTurn ? " mine" : ""}`}>
-              {pending ? "出牌中…" : myTurn ? "轮到你了" : `等待 ${g.players[g.turn]?.name} 出牌…`}
+              {pend > 0 && <span className="uno-stack">累计 +{pend}</span>}
+              {pending
+                ? "出牌中…"
+                : myTurn
+                  ? pend > 0
+                    ? `轮到你：接同类把 +${pend} 甩给下家，或摸 ${pend} 张`
+                    : "轮到你了"
+                  : `等待 ${g.players[g.turn]?.name} 出牌…`}
             </div>
           )}
 
-          {/* 我的手牌 */}
+          {/* 我的手牌（已排序） */}
+          <div className="uno-hand-label">我的手牌（{myHand.length}）{myHand.length === 1 && <span className="uno-callout">UNO!</span>}</div>
           <div className="uno-hand">
-            {myHand.map((card) => {
+            {sortedHand.map((card) => {
               const canHit = myTurn && !pending && legal.has(card.id);
               return (
                 <CardChip
@@ -331,7 +362,11 @@ export default function UnoGame({
           {/* 行动按钮 */}
           {g.status === "playing" && myTurn && (
             <div className="uno-actions">
-              {!g.justDrew && <button className="uno-btn" disabled={pending} onClick={() => act({ type: "draw", player: myId })}>摸牌</button>}
+              {!g.justDrew && (
+                <button className="uno-btn" disabled={pending} onClick={() => act({ type: "draw", player: myId })}>
+                  {pend > 0 ? `摸 ${pend} 张` : "摸牌"}
+                </button>
+              )}
               {g.justDrew && <button className="uno-btn" disabled={pending} onClick={() => act({ type: "pass", player: myId })}>过</button>}
               {myHand.length === 1 && <span className="uno-callout">UNO!</span>}
             </div>

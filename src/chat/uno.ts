@@ -1,7 +1,8 @@
 // UNO 游戏引擎（纯函数，不依赖 React / 网络 / Tauri，可单测）。
 // 设计：房主持权威 UnoState，应用动作后广播快照；其余端只渲染收到的快照。
-// v1 规则：标准 108 张；跳过/反转/+2/变色/+4变色；摸牌后可打该牌或过；
-//          反转在 2 人局当跳过；不做 +2/+4 叠加；不做未喊 UNO 罚牌；+4 不校验“无同色才可出”。
+// 规则：标准 108 张；跳过/反转/+2/变色/+4变色；摸牌后可打该牌或过；反转在 2 人局当跳过；
+//       +4 随时可出（不校验无同色）；不做未喊 UNO 罚牌。
+//       **+2/+4 同类叠牌**：被 +2 罚时可接 +2 把累计罚牌甩给下家(+4 接 +4)；接不住就一次摸完累计的牌、跳过自己。
 
 export type UnoColor = "r" | "y" | "g" | "b";
 /** 牌面值：0-9 数字，或 skip(跳过) rev(反转) d2(+2) wild(变色) wd4(+4变色) */
@@ -33,6 +34,7 @@ export interface UnoState {
   dir: 1 | -1; // 出牌方向
   justDrew: boolean; // 当前玩家本回合已摸牌（只能再打摸到的那张或过）
   drawnCardId?: string; // 刚摸到的牌 id（摸牌后唯一可出的牌）
+  pendingDraw: number; // 叠牌累计待罚摸牌数（>0 时当前玩家只能接同类 +2/+4，或一次摸完跳过）
   winner?: string; // 清空手牌者 id
   log: string[]; // 简短事件日志（末尾最新，最多留 20 条）
 }
@@ -83,6 +85,11 @@ export function legalCardIds(s: UnoState, playerId: string): Set<string> {
   if (s.status !== "playing" || s.players[s.turn]?.id !== playerId) return out;
   const top = s.discard[s.discard.length - 1];
   const hand = s.hands[playerId] || [];
+  if (s.pendingDraw > 0) {
+    // 叠牌中：只能接同类（+2 接 +2、+4 接 +4），否则只能摸牌
+    for (const card of hand) if (card.value === top.value) out.add(card.id);
+    return out;
+  }
   for (const card of hand) {
     if (s.justDrew && card.id !== s.drawnCardId) continue;
     if (canPlay(card, top, s.curColor)) out.add(card.id);
@@ -118,6 +125,7 @@ export function startGame(gid: string, players: UnoPlayer[]): UnoState {
     turn: 0,
     dir: 1,
     justDrew: false,
+    pendingDraw: 0,
     log: [`开局！${players.map((p) => p.name).join("、")} 入座，起始牌已翻开`],
   };
   // 起始牌若是功能牌，按对首家生效（简化：跳过/反转影响首家，+2 首家摸2跳过）
@@ -134,14 +142,8 @@ function applyStartCardEffect(s: UnoState, first: UnoCard): UnoState {
     return { ...s, dir: -1 as const, turn: (n - 1) % n, log: log(s, "起始为反转，方向逆转") };
   }
   if (first.value === "d2") {
-    const firstP = s.players[0].id;
-    const drawn = s.drawPile.splice(0, 2);
-    return {
-      ...s,
-      hands: { ...s.hands, [firstP]: [...s.hands[firstP], ...drawn] },
-      turn: (s.turn + 1) % n,
-      log: log(s, `起始为+2，${nameOf(s, firstP)} 摸 2 张并被跳过`),
-    };
+    // 起始 +2：首家面对 +2 叠牌（可接 +2 或摸 2），不直接罚
+    return { ...s, pendingDraw: 2, log: log(s, `起始为+2，${nameOf(s, s.players[0].id)} 需接 +2 或摸 2`) };
   }
   return s;
 }
@@ -177,6 +179,24 @@ export function applyAction(s: UnoState, a: UnoAction): UnoState {
   const top = s.discard[s.discard.length - 1];
 
   if (a.type === "draw") {
+    // 叠牌中摸牌 = 接不住，一次摸完累计罚牌、跳过自己
+    if (s.pendingDraw > 0) {
+      const discardCopy = [...s.discard];
+      const dp = refillIfEmpty([...s.drawPile], discardCopy);
+      const drawn = dp.slice(0, s.pendingDraw);
+      return {
+        ...s,
+        v: s.v + 1,
+        drawPile: dp.slice(s.pendingDraw),
+        discard: discardCopy,
+        hands: { ...s.hands, [a.player]: [...s.hands[a.player], ...drawn] },
+        pendingDraw: 0,
+        justDrew: false,
+        drawnCardId: undefined,
+        turn: advance(s, 1),
+        log: log(s, `${nameOf(s, a.player)} 接不住，摸 ${drawn.length} 张`),
+      };
+    }
     if (s.justDrew) return s; // 本回合已摸过
     const discardCopy = [...s.discard]; // refillIfEmpty 会就地把弃牌洗回牌堆
     const drawPile = refillIfEmpty([...s.drawPile], discardCopy);
@@ -212,12 +232,16 @@ export function applyAction(s: UnoState, a: UnoAction): UnoState {
   }
 
   // play
-  if (s.justDrew && a.cardId !== s.drawnCardId) return s; // 摸牌后只能出摸到那张
   const hand = s.hands[a.player] || [];
   const idx = hand.findIndex((c) => c.id === a.cardId);
   if (idx < 0) return s;
   const card = hand[idx];
-  if (!canPlay(card, top, s.curColor)) return s;
+  if (s.pendingDraw > 0) {
+    if (card.value !== top.value) return s; // 叠牌中只能接同类（+2/+4）
+  } else {
+    if (s.justDrew && a.cardId !== s.drawnCardId) return s; // 摸牌后只能出摸到那张
+    if (!canPlay(card, top, s.curColor)) return s;
+  }
   const isWild = card.color === "w";
   if (isWild && !a.chooseColor) return s; // 变色牌必须选色
 
@@ -247,30 +271,16 @@ export function applyAction(s: UnoState, a: UnoAction): UnoState {
       const flipped = { ...ns, dir: (ns.dir * -1) as 1 | -1 };
       return { ...flipped, turn: advance(flipped, 1), log: log(ns, "方向逆转") };
     }
-    case "d2": {
-      const tgtIdx = advance(ns, 1);
-      const tgt = ns.players[tgtIdx].id;
-      const dp = refillIfEmpty([...ns.drawPile], [...ns.discard]);
-      const drawn = dp.slice(0, 2);
-      return {
-        ...ns,
-        drawPile: dp.slice(2),
-        hands: { ...ns.hands, [tgt]: [...ns.hands[tgt], ...drawn] },
-        turn: advance(ns, 2),
-        log: log(ns, `${nameOf(ns, tgt)} 摸 2 张并被跳过`),
-      };
-    }
+    case "d2":
     case "wd4": {
-      const tgtIdx = advance(ns, 1);
-      const tgt = ns.players[tgtIdx].id;
-      const dp = refillIfEmpty([...ns.drawPile], [...ns.discard]);
-      const drawn = dp.slice(0, 4);
+      // 叠牌：累加待罚摸牌数，传给下家（下家可继续接同类、或一次摸完）
+      const add = card.value === "d2" ? 2 : 4;
+      const total = ns.pendingDraw + add;
       return {
         ...ns,
-        drawPile: dp.slice(4),
-        hands: { ...ns.hands, [tgt]: [...ns.hands[tgt], ...drawn] },
-        turn: advance(ns, 2),
-        log: log(ns, `${nameOf(ns, tgt)} 摸 4 张并被跳过`),
+        pendingDraw: total,
+        turn: advance(ns, 1),
+        log: log(ns, `${cardLabel(card, a.chooseColor)}！累计待罚 ${total} 张，下家接同类或摸牌`),
       };
     }
     default:
