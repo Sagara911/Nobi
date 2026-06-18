@@ -34,9 +34,14 @@ function cardFace(card: UnoCard): string {
   switch (card.value) {
     case "skip": return "⊘";
     case "rev": return "⇄";
+    case "wrev": return "⇄";
     case "d2": return "+2";
     case "wild": return "🎨";
     case "wd4": return "+4";
+    case "lightning": return "⚡";
+    case "kbomb": return "💥";
+    case "swap": return "🔄";
+    case "challenge": return "❓";
     default: return card.value;
   }
 }
@@ -50,9 +55,10 @@ function CardChip({ card, dim, big, onClick }: { card: UnoCard; dim?: boolean; b
       style={style}
       disabled={!onClick}
       onClick={onClick}
-      title={onClick ? "出这张" : undefined}
+      title={card.inv ? "侵袭牌：打出后所有人需跟同色/同点，否则摸2" : onClick ? "出这张" : undefined}
     >
       {cardFace(card)}
+      {card.inv && <span className="uno-badge" title="侵袭">⚔</span>}
     </button>
   );
 }
@@ -75,6 +81,9 @@ export default function UnoGame({
   const [lobby, setLobby] = useState<{ gid: string; host: string; players: UnoPlayer[] } | null>(null);
   const [gstate, setGstate] = useState<UnoState | null>(null);
   const [colorPick, setColorPick] = useState<string | null>(null); // 待选色的变色牌 cardId
+  const [swapTake, setSwapTake] = useState<string | null>(null); // 替换：要留下的下家牌 id
+  const [swapGive, setSwapGive] = useState<string | null>(null); // 替换：要给出的自己牌 id
+  const [claimPick, setClaimPick] = useState<string | null>(null); // 质疑牌待声明 cardId（选同色/同点）
   const [pending, setPending] = useState(false); // 已发出动作、等权威快照回来（点击反馈 + 防连点）
   const [secsLeft, setSecsLeft] = useState(TURN_SECS); // 当前回合倒计时
 
@@ -139,6 +148,13 @@ export default function UnoGame({
     setPending(false);
   }, [gstate]);
 
+  // 替换阶段开始/结束时清空选牌（依赖 from：开始=出牌人 id，结束=undefined）
+  const swapFrom = gstate?.pendingSwap?.from;
+  useEffect(() => {
+    setSwapTake(null);
+    setSwapGive(null);
+  }, [swapFrom]);
+
   // 回合倒计时：每个新回合本地起计时；归零只闪烁提醒（不替任何人出牌/摸牌/跳过）。
   useEffect(() => {
     if (!gstate || gstate.status !== "playing") {
@@ -160,6 +176,9 @@ export default function UnoGame({
     setLobby(null);
     setGstate(null);
     setColorPick(null);
+    setSwapTake(null);
+    setSwapGive(null);
+    setClaimPick(null);
     setPending(false);
     hostStateRef.current = null;
     processedAids.current = new Set();
@@ -213,6 +232,16 @@ export default function UnoGame({
     sendGame({ k: "action", gid: gstate.gid, aid: uid(), a });
   };
   const playCard = (card: UnoCard) => {
+    if (card.value === "challenge") {
+      // 质疑：先选声称维度（同色/同点）
+      setClaimPick(card.id);
+      return;
+    }
+    if (card.value === "lightning" || card.value === "kbomb" || card.value === "swap") {
+      // 闪电/王炸/替换直接打出，不选色
+      act({ type: "play", player: myId, cardId: card.id });
+      return;
+    }
     if (card.color === "w") {
       setColorPick(card.id);
       return;
@@ -234,11 +263,21 @@ export default function UnoGame({
   const myHand = g?.hands[myId] || [];
   const top = g?.discard[g.discard.length - 1];
   const pend = g?.pendingDraw ?? 0; // 叠牌待罚数
+  const inv = g?.invasion; // 侵袭判定中的需求（同色/同点），存在则为应招阶段
+  const invColor = inv ? COLOR_NAME[inv.color] : "";
+  const ps = g?.pendingSwap; // 替换待决
+  const mySwap = !!ps && ps.from === myId; // 轮到我做替换选牌
+  const offeredCards = ps ? (g!.hands[ps.target] || []).filter((c) => ps.offered.includes(c.id)) : [];
+  const ch = g?.challenge; // 质疑待决
+  const canChallenge = !!ch && ch.pending.includes(myId); // 我还没表态，可质疑/不质疑
+  const iAmChallenged = !!ch && ch.from === myId; // 我是被质疑的出牌人
 
   // 手牌排序：先颜色(红黄绿蓝、变色最后)，再点数/功能，看着顺手
   const COLOR_RANK: Record<string, number> = { r: 0, y: 1, g: 2, b: 3, w: 4 };
   const valRank = (v: string) =>
-    /^[0-9]$/.test(v) ? Number(v) : ({ skip: 10, rev: 11, d2: 12, wild: 13, wd4: 14 } as Record<string, number>)[v] ?? 99;
+    /^[0-9]$/.test(v)
+      ? Number(v)
+      : ({ skip: 10, rev: 11, d2: 12, wild: 13, wd4: 14, wrev: 15, lightning: 16, kbomb: 17, swap: 18, challenge: 19 } as Record<string, number>)[v] ?? 99;
   const sortedHand = [...myHand].sort(
     (a, b) => COLOR_RANK[a.color] - COLOR_RANK[b.color] || valRank(a.value) - valRank(b.value),
   );
@@ -302,11 +341,14 @@ export default function UnoGame({
             {g.players.map((p, i) => {
               const cnt = g.hands[p.id]?.length ?? 0;
               const uno = cnt === 1; // 剩 1 张高亮提醒
+              const zapped = g.lightning?.onPlayer === p.id; // 头上挂着闪电
               return (
                 <span
                   key={p.id}
-                  className={`uno-seat${i === g.turn ? " turn" : ""}${p.id === myId ? " me" : ""}${uno ? " uno1" : ""}`}
+                  className={`uno-seat${i === g.turn ? " turn" : ""}${p.id === myId ? " me" : ""}${uno ? " uno1" : ""}${zapped ? " zapped" : ""}`}
+                  title={zapped ? "头上挂着⚡闪电，轮到他时判定" : undefined}
                 >
+                  {zapped ? "⚡" : ""}
                   {p.name} {p.id === myId ? "" : `(${cnt})`}
                   {uno ? " ⚠UNO" : ""}
                   {i === g.turn && g.status === "playing" ? " ←" : ""}
@@ -348,15 +390,30 @@ export default function UnoGame({
               </div>
             </div>
           ) : (
-            <div className={`uno-turnbar${myTurn ? " mine" : ""}`}>
+            <div className={`uno-turnbar${myTurn ? " mine" : ""}${inv ? " invasion" : ""}`}>
+              {inv && <span className="uno-stack inv">⚔侵袭 需 {invColor} 或 {inv.value}</span>}
               {pend > 0 && <span className="uno-stack">累计 +{pend}</span>}
               {pending
                 ? "出牌中…"
-                : myTurn
-                  ? pend > 0
-                    ? `轮到你：接同类把 +${pend} 甩给下家，或摸 ${pend} 张`
-                    : "轮到你了"
-                  : `等待 ${g.players[g.turn]?.name} 出牌…`}
+                : ch
+                  ? canChallenge
+                    ? `❓ ${g.players.find((p) => p.id === ch.from)?.name} 声称有「${ch.label}」，质疑还是不质疑？`
+                    : iAmChallenged
+                      ? `❓ 你声称有「${ch.label}」，等其他人表态…`
+                      : `❓ 等其他人对「${ch.label}」表态…`
+                  : ps
+                    ? mySwap
+                      ? "🔄 替换：从下家翻出的牌里留 1 张、给出自己 1 张"
+                      : `${g.players.find((p) => p.id === ps.from)?.name} 正在替换…`
+                    : inv
+                    ? myTurn
+                      ? `应招：打出 ${invColor} 或 ${inv.value} 的牌`
+                      : `${g.players[g.turn]?.name} 正在应招侵袭…`
+                    : myTurn
+                      ? pend > 0
+                        ? `轮到你：接同类把 +${pend} 甩给下家，或摸 ${pend} 张`
+                        : "轮到你了"
+                      : `等待 ${g.players[g.turn]?.name} 出牌…`}
               <span className={`uno-timer${secsLeft === 0 ? " over" : secsLeft <= 5 ? " urgent" : ""}`}>
                 {secsLeft === 0 ? "⏰超时" : `⏱${secsLeft}`}
               </span>
@@ -380,8 +437,8 @@ export default function UnoGame({
             {myHand.length === 0 && g.status === "playing" && <span className="uno-hint">手牌已空</span>}
           </div>
 
-          {/* 行动按钮 */}
-          {g.status === "playing" && myTurn && (
+          {/* 行动按钮（侵袭应招 / 质疑阶段不显示摸牌/过） */}
+          {g.status === "playing" && myTurn && !inv && !ch && (
             <div className="uno-actions">
               {!g.justDrew && (
                 <button className="uno-btn" disabled={pending} onClick={() => act({ type: "draw", player: myId })}>
@@ -390,6 +447,14 @@ export default function UnoGame({
               )}
               {g.justDrew && <button className="uno-btn" disabled={pending} onClick={() => act({ type: "pass", player: myId })}>过</button>}
               {myHand.length === 1 && <span className="uno-callout">UNO!</span>}
+            </div>
+          )}
+
+          {/* 质疑表态按钮（其余玩家各自一组） */}
+          {g.status === "playing" && canChallenge && (
+            <div className="uno-actions uno-challenge">
+              <button className="uno-btn primary" disabled={pending} onClick={() => act({ type: "challenge", player: myId, doChallenge: true })}>质疑</button>
+              <button className="uno-btn" disabled={pending} onClick={() => act({ type: "challenge", player: myId, doChallenge: false })}>不质疑</button>
             </div>
           )}
 
@@ -412,6 +477,69 @@ export default function UnoGame({
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 替换选牌（仅出牌人可见可操作） */}
+      {g && mySwap && ps && (
+        <div className="uno-colorpick">
+          <div className="uno-colorpick-box uno-swap-box" onClick={(e) => e.stopPropagation()}>
+            <div className="uno-colorpick-title">
+              🔄 替换 · 从 {g.players.find((p) => p.id === ps.target)?.name} 翻出 {offeredCards.length} 张
+            </div>
+            <div className="uno-swap-sec">留 1 张进自己手里：</div>
+            <div className="uno-swap-row">
+              {offeredCards.map((c) => (
+                <span key={c.id} className={`uno-swap-pick${swapTake === c.id ? " sel" : ""}`}>
+                  <CardChip card={c} onClick={() => setSwapTake(c.id)} />
+                </span>
+              ))}
+            </div>
+            <div className="uno-swap-sec">给出自己 1 张：</div>
+            <div className="uno-swap-row uno-swap-hand">
+              {sortedHand.map((c) => (
+                <span key={c.id} className={`uno-swap-pick${swapGive === c.id ? " sel" : ""}`}>
+                  <CardChip card={c} onClick={() => setSwapGive(c.id)} />
+                </span>
+              ))}
+            </div>
+            <div className="uno-swap-btns">
+              <button
+                className="uno-btn primary"
+                disabled={!swapTake || !swapGive || pending}
+                onClick={() => act({ type: "swap", player: myId, takeCardId: swapTake!, giveCardId: swapGive! })}
+              >
+                确定替换
+              </button>
+              <button className="uno-btn" disabled={pending} onClick={() => act({ type: "swap", player: myId })}>
+                放弃替换
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 质疑牌声称维度（同色 / 同点） */}
+      {g && claimPick && top && (
+        <div className="uno-colorpick" onClick={() => setClaimPick(null)}>
+          <div className="uno-colorpick-box" onClick={(e) => e.stopPropagation()}>
+            <div className="uno-colorpick-title">❓ 质疑 · 声称你手里有…</div>
+            <div className="uno-colorpick-row">
+              <button
+                className="uno-btn primary"
+                onClick={() => { act({ type: "play", player: myId, cardId: claimPick, claim: "color" }); setClaimPick(null); }}
+              >
+                {COLOR_NAME[g.curColor]}色（同色）
+              </button>
+              <button
+                className="uno-btn primary"
+                onClick={() => { act({ type: "play", player: myId, cardId: claimPick, claim: "value" }); setClaimPick(null); }}
+              >
+                {cardFace(top)}（同点）
+              </button>
+            </div>
+            <div className="uno-hint" style={{ marginTop: 10 }}>真有→质疑你的人摸牌；没有(诈唬)→被质疑你就摸牌</div>
           </div>
         </div>
       )}

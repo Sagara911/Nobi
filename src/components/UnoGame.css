@@ -215,6 +215,7 @@
 
 /* 单张牌 */
 .uno-card {
+  position: relative;
   min-width: 40px;
   height: 58px;
   border-radius: 8px;
@@ -258,6 +259,37 @@
   border-color: #e8b21f;
   color: #ffd866;
   font-weight: 600;
+}
+/* 头上挂着闪电：紫色描边脉动，提示随时可能被劈 */
+.uno-seat.zapped {
+  border-color: #a06bff;
+  box-shadow: 0 0 0 1px #a06bff, 0 0 8px #a06bff66;
+  animation: uno-zap 1.2s ease-in-out infinite;
+}
+@keyframes uno-zap {
+  0%, 100% { box-shadow: 0 0 0 1px #a06bff, 0 0 6px #a06bff44; }
+  50% { box-shadow: 0 0 0 1px #c89bff, 0 0 12px #a06bffaa; }
+}
+/* 侵袭角标：牌右上角的小红章 */
+.uno-card .uno-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 6px;
+  border: 1px solid #fff3;
+  box-shadow: 0 1px 3px #0006;
+  pointer-events: none;
+}
+.uno-stack.inv {
+  background: #c0392b;
+}
+.uno-turnbar.invasion {
+  border-color: #c0392b;
 }
 .uno-stack {
   background: #e0413a;
@@ -402,4 +434,50 @@
 }
 .uno-colorbtn:active {
   transform: scale(0.95);
+}
+
+/* 替换选牌弹窗 */
+.uno-swap-box {
+  max-width: 92%;
+}
+.uno-swap-sec {
+  margin: 10px 2px 6px;
+  font-size: 13px;
+  color: #b9bcc6;
+  text-align: left;
+}
+.uno-swap-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.uno-swap-hand {
+  max-height: 140px;
+  overflow-y: auto;
+}
+/* 选中的牌：金色高亮环 + 上浮 */
+.uno-swap-pick {
+  display: inline-flex;
+  border-radius: 10px;
+  padding: 2px;
+}
+.uno-swap-pick.sel {
+  background: #e8b21f;
+  box-shadow: 0 0 0 2px #e8b21f, 0 0 10px #e8b21f88;
+  transform: translateY(-3px);
+}
+.uno-swap-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+/* 质疑表态按钮组：紫框提示这是质疑环节 */
+.uno-actions.uno-challenge {
+  border: 1px solid #a06bff;
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: #a06bff1a;
 }
