@@ -143,6 +143,17 @@ export default function UnoGame({
   // 始终订阅（即使面板关着也在听，这样别人开局/邀请不会漏）
   useEffect(() => subscribeGame(handle), [subscribeGame, handle]);
 
+  // 房主心跳：每 3 秒重广播一次权威状态，救回「漏收某次快照而卡住」的端
+  // （高版本快照被接受→追上进度；同版本被忽略→不会闪屏）。质疑/替换等多人同时操作时尤其需要。
+  useEffect(() => {
+    if (!amHost) return;
+    const t = window.setInterval(() => {
+      const s = hostStateRef.current;
+      if (s && s.status === "playing") sendRef.current({ k: "state", s });
+    }, 3000);
+    return () => window.clearInterval(t);
+  }, [amHost]);
+
   // 收到新快照（自己的动作生效或别人出牌）即清掉「出牌中」
   useEffect(() => {
     setPending(false);
