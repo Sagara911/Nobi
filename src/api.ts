@@ -43,6 +43,11 @@ export const chatGetOpacityKeys = () => invoke<string[]>("chat_get_opacity_keys"
 export const chatSetOpacityKey = (which: "down" | "up", accel: string) =>
   invoke<void>("chat_set_opacity_key", { which, accel });
 
+// 金库模式（隐秘防护）：锁定态下主菜单/托盘都不出现「浏览窗/便签」入口。
+// 解锁靠前端「连点版本号」暗号；后端不持久化，每次启动默认锁定。
+export const vaultGet = () => invoke<boolean>("vault_get");
+export const vaultSet = (unlocked: boolean) => invoke<void>("vault_set", { unlocked });
+
 // 开机自启（Tauri 官方插件；Windows 走注册表 HKCU Run）
 export const getAutostart = () => autostartIsEnabled();
 export const setAutostart = (on: boolean) =>

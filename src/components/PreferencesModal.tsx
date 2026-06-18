@@ -58,13 +58,16 @@ export default function PreferencesModal({ onClose }: { onClose: () => void }) {
   const [msg, setMsg] = useState("");
 
   const reload = async () => {
-    const [tool, boss, op, web] = await Promise.all([
+    const [tool, boss, op, web, unlocked] = await Promise.all([
       api.toolGetKeys().catch(() => ["", ""]),
       api.chatGetBossKey().catch(() => ""),
       api.chatGetOpacityKeys().catch(() => ["", ""]),
       api.webGetKeys().catch(() => [] as [string, string][]),
+      api.vaultGet().catch(() => false),
     ]);
-    setGroups([
+    // 金库锁定时，连「聊天/浏览窗」的快捷键组也整组不显示——否则老板翻首选项就看出有这俩功能。
+    // 「桌面工具」（取色/参考窗）不属隐藏功能，始终保留。
+    const next: Group[] = [
       {
         title: "桌面工具",
         items: [
@@ -72,25 +75,30 @@ export default function PreferencesModal({ onClose }: { onClose: () => void }) {
           { id: "tool-ref", label: "参考窗 · 点击穿透切换", accel: tool[1] || "", set: (a) => api.toolSetKey("ref", a) },
         ],
       },
-      {
-        title: "聊天（便签）",
-        items: [
-          { id: "chat-boss", label: "老板键（藏 / 显所有聊天窗）", accel: boss, set: (a) => api.chatSetBossKey(a) },
-          { id: "chat-opd", label: "透明度 · 调淡", accel: op[0] || "", set: (a) => api.chatSetOpacityKey("down", a) },
-          { id: "chat-opu", label: "透明度 · 调浓", accel: op[1] || "", set: (a) => api.chatSetOpacityKey("up", a) },
-        ],
-      },
-      {
-        title: "浏览窗（仅在浏览窗打开时生效）",
-        items: web.map(([action, accel]) => ({
-          id: `web-${action}`,
-          label: WEB_LABEL[action] || action,
-          accel,
-          set: (a: string) => api.webSetKey(action, a),
-        })),
-        onReset: () => api.webResetKeys(),
-      },
-    ]);
+    ];
+    if (unlocked) {
+      next.push(
+        {
+          title: "聊天（便签）",
+          items: [
+            { id: "chat-boss", label: "老板键（藏 / 显所有聊天窗）", accel: boss, set: (a) => api.chatSetBossKey(a) },
+            { id: "chat-opd", label: "透明度 · 调淡", accel: op[0] || "", set: (a) => api.chatSetOpacityKey("down", a) },
+            { id: "chat-opu", label: "透明度 · 调浓", accel: op[1] || "", set: (a) => api.chatSetOpacityKey("up", a) },
+          ],
+        },
+        {
+          title: "浏览窗（仅在浏览窗打开时生效）",
+          items: web.map(([action, accel]) => ({
+            id: `web-${action}`,
+            label: WEB_LABEL[action] || action,
+            accel,
+            set: (a: string) => api.webSetKey(action, a),
+          })),
+          onReset: () => api.webResetKeys(),
+        },
+      );
+    }
+    setGroups(next);
   };
 
   useEffect(() => {

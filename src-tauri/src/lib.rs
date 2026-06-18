@@ -289,6 +289,81 @@ fn set_chat_boss_async(app: &tauri::AppHandle, on: bool) {
     std::thread::spawn(move || set_chat_boss(&app, on));
 }
 
+// ===== 金库模式（隐秘防护通道）=====
+// 锁定态下：主菜单和托盘右键菜单里都「不出现」浏览窗/便签入口，已开的窗自动藏起。
+// 老板随便翻 Nobi 的菜单/托盘，根本看不到这两个功能存在。
+// 解锁无可见入口：前端「连点品牌区版本号 5 下」暗号 → vault_set(true)。
+// 故意不持久化：每次启动默认锁定（false），这才安全——重启即回到「什么都看不到」。
+#[cfg(desktop)]
+static VAULT_UNLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 按当前锁定态构建托盘菜单：解锁才挂「浏览窗/便签」两项（菜单事件 id 始终在，缺项即不触发）。
+#[cfg(desktop)]
+fn build_tray_menu(app: &tauri::AppHandle, unlocked: bool) -> tauri::Result<Menu<tauri::Wry>> {
+    let show = MenuItem::with_id(app, "show", "显示 Nobi", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    if unlocked {
+        let watch = MenuItem::with_id(app, "watch", "🌐 浏览窗（上次的页）", true, None::<&str>)?;
+        let note = MenuItem::with_id(app, "note", "📝 便签", true, None::<&str>)?;
+        Menu::with_items(app, &[&show, &watch, &note, &quit])
+    } else {
+        Menu::with_items(app, &[&show, &quit])
+    }
+}
+
+/// 锁定态变化后重建托盘菜单（动态增删「浏览窗/便签」两项）。
+#[cfg(desktop)]
+fn refresh_tray(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    if let Some(tray) = app.tray_by_id("main") {
+        if let Ok(menu) = build_tray_menu(app, VAULT_UNLOCKED.load(Ordering::Relaxed)) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+}
+
+/// 锁定时把所有浏览窗/便签藏起（不管当前是否可见）——等价于同时按下两个老板键的「藏」分支：
+/// 浏览窗暂停在播视频 + 静音 + 归还控制键，便签直接隐藏。boss 键仍随窗存在占用（行为与老板键一致）。
+#[cfg(desktop)]
+fn lock_hide_windows(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    const PAUSE_JS: &str = "document.querySelectorAll('video').forEach(function(v){if(!v.paused){v.dataset.nobiPaused='1';v.pause();}});";
+    let mut web_any = false;
+    for (label, w) in app.webview_windows() {
+        if label.starts_with("web-") {
+            web_any = true;
+            let _ = w.eval(PAUSE_JS);
+            let _ = w.hide();
+        } else if is_chat_label(&label) {
+            let _ = w.hide();
+        }
+    }
+    if web_any {
+        #[cfg(windows)]
+        mute_web_windows(app, true);
+        set_web_hotkeys_async(app, true, false);
+        WEB_CTRLS_ON.store(false, Ordering::Relaxed);
+    }
+}
+
+/// 当前是否已解锁（前端启动时读，决定主菜单是否渲染浏览窗/便签项）。
+#[cfg(desktop)]
+#[tauri::command]
+fn vault_get() -> bool {
+    VAULT_UNLOCKED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 设解锁态：重建托盘菜单；若是上锁则把已开的浏览窗/便签全藏起。
+#[cfg(desktop)]
+#[tauri::command]
+fn vault_set(app: tauri::AppHandle, unlocked: bool) {
+    VAULT_UNLOCKED.store(unlocked, std::sync::atomic::Ordering::Relaxed);
+    refresh_tray(&app);
+    if !unlocked {
+        lock_hide_windows(&app);
+    }
+}
+
 // ===== 聊天窗透明度（Alt+V 调淡 / Alt+B 调浓）=====
 // 本机 WebView2 只能走 Win32 原生 alpha（同看球）。键随聊天窗生命周期占用/归还。
 
@@ -1744,11 +1819,12 @@ pub fn run() {
             }
 
             // 系统托盘：关窗收进托盘（后台采集/MCP 服务不中断），点图标还原
-            let show = MenuItem::with_id(app, "show", "显示 Nobi", true, None::<&str>)?;
-            let watch = MenuItem::with_id(app, "watch", "🌐 浏览窗（上次的页）", true, None::<&str>)?;
-            let note = MenuItem::with_id(app, "note", "📝 便签", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &watch, &note, &quit])?;
+            // 金库模式：启动默认锁定（VAULT_UNLOCKED=false）→ 托盘只挂「显示 Nobi / 退出」，
+            // 不出现浏览窗/便签。解锁后由 vault_set→refresh_tray 动态补上这两项。
+            let menu = build_tray_menu(
+                app.handle(),
+                VAULT_UNLOCKED.load(std::sync::atomic::Ordering::Relaxed),
+            )?;
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Nobi")
@@ -2053,7 +2129,10 @@ pub fn run() {
             tool_get_keys,
             tool_set_key,
             // 浏览窗/便签从 Alt+Tab/任务栏隐去（前端建隐藏窗后调）
-            stealth_show
+            stealth_show,
+            // 金库模式（隐秘防护）：锁定态下主菜单/托盘都不出现浏览窗/便签
+            vault_get,
+            vault_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
