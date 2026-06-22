@@ -140,6 +140,18 @@ export default function LudoGame({
   );
 
   useEffect(() => subscribeGame(handle), [subscribeGame, handle]);
+  // 房主心跳：每 3s 重广播——对局中重发 state、大厅阶段重发 lobby。
+  // 游戏帧全走广播、不落消息表，晚到/重连的端靠这个心跳补齐（替代原先的历史回放）。
+  useEffect(() => {
+    if (!amHost) return;
+    const t = window.setInterval(() => {
+      const s = hostStateRef.current;
+      const lb = lobbyRef.current;
+      if (s && s.status === "playing") sendRef.current({ k: "state", s });
+      else if (!s && lb) sendRef.current({ k: "lobby", gid: lb.gid, host: lb.host, players: lb.players });
+    }, 3000);
+    return () => window.clearInterval(t);
+  }, [amHost]);
   useEffect(() => {
     setPending(false); // 收到新快照即清「等待」
   }, [gstate]);

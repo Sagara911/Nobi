@@ -288,17 +288,11 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     if (b.sendGame) b.sendGame(frame);
     else void b.sendText(frame).catch(() => {});
   }, []);
-  // 低频但需要"新人/重连补齐"的帧（lobby/join）走持久化通道，靠 history 回放才进得来；高频 state/action 走广播。
-  const sendChatFrame = useCallback((frame: string) => {
-    void backendRef.current?.sendText(frame).catch(() => {});
-  }, []);
+  // 所有游戏帧（含 lobby/join）一律走广播、绝不写消息表——聊天历史永不被游戏帧污染。
+  // 晚到/重连的人靠"房主大厅心跳"(每 3s 重广播 lobby)和"对局心跳"(重广播 state)补齐，不依赖历史回放。
   const routeGameSend = useCallback(
-    (tag: string, ev: { k: string }) => {
-      const frame = tag + JSON.stringify(ev);
-      if (ev.k === "lobby" || ev.k === "join") sendChatFrame(frame); // 可被 history 回放→晚到的人也能看到房间/加入
-      else sendGameFrame(frame); // state/action：瞬时广播，不污染聊天历史
-    },
-    [sendChatFrame, sendGameFrame],
+    (tag: string, ev: { k: string }) => sendGameFrame(tag + JSON.stringify(ev)),
+    [sendGameFrame],
   );
   const sendUno = useCallback((ev: GEvent) => routeGameSend(UNO_TAG, ev), [routeGameSend]);
   const subscribeUno = useCallback((fn: (ev: GEvent) => void) => {

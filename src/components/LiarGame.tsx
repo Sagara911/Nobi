@@ -138,7 +138,9 @@ export default function LiarGame({
     if (!amHost) return;
     const t = window.setInterval(() => {
       const s = hostStateRef.current;
+      const lb = lobbyRef.current;
       if (s && s.status === "playing") sendRef.current({ k: "state", s });
+      else if (!s && lb) sendRef.current({ k: "lobby", gid: lb.gid, host: lb.host, players: lb.players }); // 大厅心跳：晚到的人也能收到房间→加入（游戏帧全走广播、不落库）
     }, 3000);
     return () => window.clearInterval(t);
   }, [amHost]);

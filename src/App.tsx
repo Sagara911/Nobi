@@ -192,7 +192,7 @@ function App() {
     const clientId = getChatClientId();
     const backends = new Map<string, ReturnType<typeof createChatBackend>>();
     let stopped = false;
-    const keyOf = (pid: string, room: string) => `${pid} ${room}`;
+    const keyOf = (pid: string, room: string) => `${pid}\0${room}`;
 
     const reconcile = () => {
       if (stopped) return;
@@ -206,6 +206,7 @@ function App() {
         const label = `chat-${`${profileId}-${room}`.replace(/[^\w-]/g, "_")}`;
         b.onMessage((m) => {
           if (m.clientId === clientId) return; // 自己发的不提醒
+          if (m.body && m.body.charCodeAt(0) < 0x08) return; // 游戏/系统帧(控制字符前缀)不是聊天消息，不提醒/不闪
           // 直接查该群窗口是否"打开+聚焦+可见"——只有正在看时才不提醒，
           // 比依赖易残留的本地标记可靠（关窗/藏起/在后台都会正常提醒）
           void (async () => {
