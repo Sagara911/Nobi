@@ -204,7 +204,6 @@ pub fn fetch_assets(conn: &Connection) -> Result<Vec<Asset>, String> {
             let colors_json: String = row.get(13).unwrap_or_else(|_| "[]".to_string());
             let colors: Vec<String> = serde_json::from_str(&colors_json).unwrap_or_default();
             let path: String = row.get(1)?;
-            let missing = !std::path::Path::new(&path).exists();
             Ok(Asset {
                 id: row.get(0)?,
                 path,
@@ -220,7 +219,7 @@ pub fn fetch_assets(conn: &Connection) -> Result<Vec<Asset>, String> {
                 added_at: row.get(11).unwrap_or(0),
                 thumb: row.get(12).unwrap_or_default(),
                 colors,
-                missing,
+                missing: false, // 失效检测已移出加载热路径（大库逐条 stat 会卡死）→ 见 check_missing 命令
                 favorite: row.get::<_, i64>(14).unwrap_or(0) != 0,
             })
         })

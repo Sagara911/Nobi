@@ -74,6 +74,8 @@ export const toolSetKey = (which: "color" | "ref", accel: string) =>
 
 // ---- 素材库 ----
 export const listAssets = () => invoke<Asset[]>("list_assets");
+// 失效链接检测：移出加载热路径，前端进入后台单独跑（大库时逐条 stat 会卡死首屏）
+export const checkMissing = () => invoke<number[]>("check_missing");
 export const importFolder = (path: string) => invoke<number>("import_folder", { path });
 export const importPaths = (paths: string[]) => invoke<number>("import_paths", { paths });
 export interface ImportedBlob {

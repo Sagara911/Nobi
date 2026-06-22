@@ -216,6 +216,27 @@ pub fn list_assets(app: tauri::AppHandle) -> Result<Vec<Asset>, String> {
     fetch_assets(&conn)
 }
 
+/// 失效链接检测：返回原文件已被移动/删除的素材 id。
+/// 从加载热路径分离——大库时逐条 stat 磁盘会把首屏卡死，故前端进入后台单独跑一次。
+#[tauri::command]
+pub fn check_missing(app: tauri::AppHandle) -> Result<Vec<i64>, String> {
+    let conn = open_db(&app)?;
+    let mut stmt = conn
+        .prepare("SELECT id, path FROM assets")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+    let mut missing = Vec::new();
+    for r in rows {
+        let (id, path) = r.map_err(|e| e.to_string())?;
+        if !std::path::Path::new(&path).exists() {
+            missing.push(id);
+        }
+    }
+    Ok(missing)
+}
+
 /// 清空库（开发期方便重置）
 #[tauri::command]
 pub fn clear_assets(app: tauri::AppHandle) -> Result<(), String> {

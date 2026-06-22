@@ -2037,6 +2037,7 @@ pub fn run() {
             library::import_paths,
             library::import_blob,
             library::list_assets,
+            library::check_missing,
             library::clear_assets,
             library::remove_asset,
             library::remove_assets,

@@ -327,7 +327,17 @@ function App() {
       await reload();
       loadCmds();
       loadCollections();
-      buildThumbs();
+      await buildThumbs();
+      // 失效链接检测移到后台跑：不阻塞首屏（大库时逐条 stat 磁盘会卡死），算完再回填 missing 标记
+      try {
+        const ids = await api.checkMissing();
+        if (ids.length) {
+          const s = new Set(ids);
+          setAssets((prev) => prev.map((a) => (s.has(a.id) ? { ...a, missing: true } : a)));
+        }
+      } catch {
+        /* ignore */
+      }
     })();
   }, [reload, buildThumbs, loadCmds, loadCollections]);
 
