@@ -44,6 +44,11 @@ function cardFace(card: UnoCard): string {
     case "kbomb": return "💥";
     case "swap": return "🔄";
     case "challenge": return "❓";
+    case "burn": return "🔥";
+    case "combo": return "🔁";
+    case "purge": return "♻";
+    case "gamble": return "🎲";
+    case "dump": return "🫳";
     default: return card.value;
   }
 }
@@ -86,6 +91,9 @@ export default function UnoGame({
   const [swapTake, setSwapTake] = useState<string | null>(null); // 替换：要留下的下家牌 id
   const [swapGive, setSwapGive] = useState<string | null>(null); // 替换：要给出的自己牌 id
   const [claimPick, setClaimPick] = useState<string | null>(null); // 质疑牌待声明 cardId（选同色/同点）
+  const [burnPick, setBurnPick] = useState<string | null>(null); // 燃烧牌待选色 cardId
+  const [comboPick, setComboPick] = useState<string | null>(null); // 连击牌待选点数 cardId
+  const [multiPick, setMultiPick] = useState<{ kind: "purge" | "gamble" | "dump"; cardId: string; sel: string[] } | null>(null); // 净化/豪赌/甩锅：多选手牌
   const [pending, setPending] = useState(false); // 已发出动作、等权威快照回来（点击反馈 + 防连点）
   const [secsLeft, setSecsLeft] = useState(TURN_SECS); // 当前回合倒计时
 
@@ -232,6 +240,9 @@ export default function UnoGame({
     setSwapTake(null);
     setSwapGive(null);
     setClaimPick(null);
+    setBurnPick(null);
+    setComboPick(null);
+    setMultiPick(null);
     setPending(false);
     hostStateRef.current = null;
     processedAids.current = new Set();
@@ -311,6 +322,12 @@ export default function UnoGame({
       act({ type: "play", player: myId, cardId: card.id });
       return;
     }
+    if (card.value === "burn") { setBurnPick(card.id); return; } // 燃烧：先选要烧的颜色
+    if (card.value === "combo") { setComboPick(card.id); return; } // 连击：先选要清的点数
+    if (card.value === "purge" || card.value === "gamble" || card.value === "dump") {
+      setMultiPick({ kind: card.value, cardId: card.id, sel: [] }); // 净化/豪赌/甩锅：多选手牌
+      return;
+    }
     if (card.color === "w") {
       setColorPick(card.id);
       return;
@@ -349,7 +366,7 @@ export default function UnoGame({
   const valRank = (v: string) =>
     /^[0-9]$/.test(v)
       ? Number(v)
-      : ({ skip: 10, rev: 11, d2: 12, wild: 13, wd4: 14, wrev: 15, lightning: 16, kbomb: 17, swap: 18, challenge: 19 } as Record<string, number>)[v] ?? 99;
+      : ({ skip: 10, rev: 11, d2: 12, wild: 13, wd4: 14, wrev: 15, lightning: 16, kbomb: 17, swap: 18, challenge: 19, burn: 20, combo: 21, purge: 22, gamble: 23, dump: 24 } as Record<string, number>)[v] ?? 99;
   const sortedHand = [...myHand].sort(
     (a, b) => COLOR_RANK[a.color] - COLOR_RANK[b.color] || valRank(a.value) - valRank(b.value),
   );
@@ -630,6 +647,117 @@ export default function UnoGame({
           </div>
         </div>
       )}
+
+      {/* 🔥 燃烧：选要烧的颜色（只列手里有的色，附数量；上限 4 张） */}
+      {g && burnPick && (() => {
+        const rest = myHand.filter((c) => c.id !== burnPick);
+        const counts: Record<string, number> = {};
+        for (const c of rest) if (c.color !== "w") counts[c.color] = (counts[c.color] || 0) + 1;
+        const colors = (["r", "y", "g", "b"] as UnoColor[]).filter((c) => counts[c]);
+        return (
+          <div className="uno-colorpick" onClick={() => setBurnPick(null)}>
+            <div className="uno-colorpick-box" onClick={(e) => e.stopPropagation()}>
+              <div className="uno-colorpick-title">🔥 燃烧 · 烧掉哪种颜色？（最多 4 张）</div>
+              {colors.length ? (
+                <div className="uno-colorpick-row">
+                  {colors.map((c) => (
+                    <button
+                      key={c}
+                      className="uno-colorbtn"
+                      style={{ background: COLOR_HEX[c] }}
+                      disabled={pending}
+                      onClick={() => { act({ type: "play", player: myId, cardId: burnPick, chooseColor: c }); setBurnPick(null); }}
+                    >
+                      {COLOR_NAME[c]} ×{Math.min(counts[c], 4)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="uno-hint">手里没有可烧的带色牌</div>
+              )}
+              <div className="uno-swap-btns"><button className="uno-btn" onClick={() => setBurnPick(null)}>取消</button></div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 🔁 连击：选要清的点数（只列手里有的点，附数量；上限 4 张） */}
+      {g && comboPick && (() => {
+        const rest = myHand.filter((c) => c.id !== comboPick);
+        const byVal: Record<string, UnoCard[]> = {};
+        for (const c of rest) (byVal[c.value] ||= []).push(c);
+        const vals = Object.keys(byVal).sort((a, b) => valRank(a) - valRank(b));
+        return (
+          <div className="uno-colorpick" onClick={() => setComboPick(null)}>
+            <div className="uno-colorpick-box" onClick={(e) => e.stopPropagation()}>
+              <div className="uno-colorpick-title">🔁 连击 · 清掉哪个点数？（最多 4 张）</div>
+              {vals.length ? (
+                <div className="uno-combo-row">
+                  {vals.map((v) => (
+                    <button
+                      key={v}
+                      className="uno-combo-btn"
+                      disabled={pending}
+                      onClick={() => { act({ type: "play", player: myId, cardId: comboPick, comboValue: v }); setComboPick(null); }}
+                    >
+                      <span className="uno-combo-face">{cardFace(byVal[v][0])}</span>
+                      <span className="uno-combo-cnt">×{Math.min(byVal[v].length, 4)}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="uno-hint">手里没有别的牌可清</div>
+              )}
+              <div className="uno-swap-btns"><button className="uno-btn" onClick={() => setComboPick(null)}>取消</button></div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ♻️净化 / 🎲豪赌 / 🫳甩锅：从手牌里多选 */}
+      {g && multiPick && (() => {
+        const mp = multiPick;
+        const rest = sortedHand.filter((c) => c.id !== mp.cardId);
+        const meta = {
+          purge: { title: "♻️ 净化 · 选要弃掉的牌（最多 2 张）", max: 2, confirm: (k: number) => `弃掉 ${k} 张` },
+          gamble: { title: "🎲 豪赌 · 押几张？掷骰点数 > 张数 才烧成，否则反摸等量", max: 4, confirm: (k: number) => `押 ${k} 张赌烧` },
+          dump: { title: "🫳 甩锅 · 选牌塞给下家（最多 4 张，自己留 ≥1）", max: Math.min(4, rest.length - 1), confirm: (k: number) => `塞给下家 ${k} 张` },
+        }[mp.kind];
+        const toggle = (id: string) => setMultiPick((cur) => {
+          if (!cur) return cur;
+          const has = cur.sel.includes(id);
+          if (has) return { ...cur, sel: cur.sel.filter((x) => x !== id) };
+          if (cur.sel.length >= meta.max) return cur; // 到上限不再加
+          return { ...cur, sel: [...cur.sel, id] };
+        });
+        const k = mp.sel.length;
+        const ok = k >= 1 && k <= meta.max;
+        return (
+          <div className="uno-colorpick" onClick={() => setMultiPick(null)}>
+            <div className="uno-colorpick-box uno-swap-box" onClick={(e) => e.stopPropagation()}>
+              <div className="uno-colorpick-title">{meta.title}</div>
+              <div className="uno-swap-row uno-swap-hand">
+                {rest.map((c) => (
+                  <span key={c.id} className={`uno-swap-pick${mp.sel.includes(c.id) ? " sel" : ""}`}>
+                    <CardChip card={c} onClick={() => toggle(c.id)} />
+                  </span>
+                ))}
+                {!rest.length && <div className="uno-hint">没有别的牌可选</div>}
+              </div>
+              <div className="uno-swap-btns">
+                <button
+                  className="uno-btn primary"
+                  disabled={!ok || pending}
+                  onClick={() => { act({ type: "play", player: myId, cardId: mp.cardId, picks: mp.sel }); setMultiPick(null); }}
+                >
+                  {ok ? meta.confirm(k) : `已选 ${k} 张`}
+                </button>
+                <button className="uno-btn" onClick={() => setMultiPick(null)}>取消</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

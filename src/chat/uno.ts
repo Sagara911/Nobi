@@ -16,6 +16,12 @@
 //         （没选中那张留在下家手里，双方手牌数不变）；可放弃。牌本身用完洗回牌堆，不进弃牌堆/不改色。
 //       **质疑**（challenge，四色万能诈唬牌）：打出时声称「手里有同色 / 同点的牌」，其余玩家各自选质疑或不质疑：
 //         若声称属实→质疑者摸 1；若是诈唬→出牌人摸 1（按质疑人数各算一次）。不质疑者无事。牌用完洗回牌堆。
+//       —— 以下五张为「削牌」功能牌（四色万能、随时可出、用完洗回牌堆、不进弃牌堆/不改色）——
+//       **燃烧**（burn）：出时选一色，把手里该色的牌（上限4）连同燃烧牌一起洗回牌堆。烧空手=获胜。
+//       **连击**（combo）：出时选一点数，把手里该点的牌（上限4）连同连击牌洗回牌堆。清空手=获胜。
+//       **净化**（purge）：弃任意（≤2）张，连同净化牌洗回牌堆。弃空手=获胜。
+//       **豪赌**（gamble）：押 1-4 张并摇骰，点数 > 押注张数→烧掉；否则反摸等量真牌。牌本体洗回牌堆。烧空手=获胜。
+//       **甩锅**（dump）：选最多4张塞给下家（自己至少留1张，给牌不算赢）。牌本体洗回牌堆。
 //       回合倒计时是 UI 侧的（超时只闪烁提醒，不在引擎里做任何自动操作）。
 
 export type UnoColor = "r" | "y" | "g" | "b";
@@ -29,7 +35,12 @@ export type UnoValue =
   | "kbomb"  // 王炸：可持可出，打出后除自己外每人各摸 4 张；用完洗回牌堆，不进弃牌堆、不改色
   | "wrev"  // 四色反转：变色牌版反转，随时可出、出时选色，效果同反转
   | "swap"  // 替换：四色万能，打出后与下家盲选换 1 张牌；用完洗回牌堆，不进弃牌堆/不改色
-  | "challenge"; // 质疑：四色万能诈唬牌，声称有同色/同点的牌，其余玩家各自质疑；用完洗回牌堆
+  | "challenge"  // 质疑：四色万能诈唬牌，声称有同色/同点的牌，其余玩家各自质疑；用完洗回牌堆
+  | "burn"  // 燃烧：四色万能，选一色把手里该色牌（≤4）连同自己洗回牌堆；不进弃牌堆/不改色
+  | "combo"  // 连击：四色万能，选一点把手里该点牌（≤4）连同自己洗回牌堆；不进弃牌堆/不改色
+  | "purge"  // 净化：四色万能，弃任意（≤2）张连同自己洗回牌堆；不进弃牌堆/不改色
+  | "gamble"  // 豪赌：四色万能，押1-4张摇骰，点数>张数→烧掉，否则反摸等量；牌本体洗回牌堆
+  | "dump"; // 甩锅：四色万能，选≤4张塞给下家（自己留≥1）；牌本体洗回牌堆，不进弃牌堆/不改色
 
 export interface UnoCard {
   id: string; // 每张物理牌唯一，用于 React key / 动作引用
@@ -112,6 +123,31 @@ const INVASION_COUNT = 6;
 /** 侵袭判定中，应招不出（无同色同点）时自动摸的牌数 */
 const INVASION_DRAW = 2;
 
+/** 燃烧牌张数（四色万能·烧同色） */
+const BURN_COUNT = 4;
+/** 燃烧单次最多烧掉的同色牌数 */
+const BURN_CAP = 4;
+
+/** 连击牌张数（四色万能·清同点） */
+const COMBO_COUNT = 4;
+/** 连击单次最多清掉的同点牌数 */
+const COMBO_CAP = 4;
+
+/** 净化牌张数（四色万能·弃任意牌） */
+const PURGE_COUNT = 4;
+/** 净化一次最多弃的牌数 */
+const PURGE_DISCARD = 2;
+
+/** 豪赌牌张数（四色万能·赌烧，摇骰失败反摸） */
+const GAMBLE_COUNT = 4;
+/** 豪赌一次最多押注（赌烧）的牌数 */
+const GAMBLE_MAX = 4;
+
+/** 甩锅牌张数（四色万能·塞牌给下家） */
+const DUMP_COUNT = 4;
+/** 甩锅一次最多塞给下家的牌数 */
+const DUMP_GIVE = 4;
+
 /** 一张牌是否满足侵袭判定（同色或同点；变色牌 color "w" 不算匹配） */
 const matchesInvasion = (c: UnoCard, inv: { color: UnoColor; value: string }) =>
   c.color === inv.color || c.value === inv.value;
@@ -145,6 +181,11 @@ export function buildDeck(): UnoCard[] {
   for (let i = 0; i < WREV_COUNT; i++) add("w", "wrev"); // 四色反转（变色牌版反转，color "w" 不会成为起始牌）
   for (let i = 0; i < SWAP_COUNT; i++) add("w", "swap"); // 替换（四色万能，color "w"=可随时出、且不会成为起始牌）
   for (let i = 0; i < CHALLENGE_COUNT; i++) add("w", "challenge"); // 质疑（四色万能诈唬牌，color "w"=可随时出、且不会成为起始牌）
+  for (let i = 0; i < BURN_COUNT; i++) add("w", "burn"); // 燃烧（四色万能·烧同色，color "w"=可随时出、不会成为起始牌）
+  for (let i = 0; i < COMBO_COUNT; i++) add("w", "combo"); // 连击（四色万能·清同点）
+  for (let i = 0; i < PURGE_COUNT; i++) add("w", "purge"); // 净化（四色万能·弃任意2张）
+  for (let i = 0; i < GAMBLE_COUNT; i++) add("w", "gamble"); // 豪赌（四色万能·赌烧，摇骰失败反摸）
+  for (let i = 0; i < DUMP_COUNT; i++) add("w", "dump"); // 甩锅（四色万能·塞牌给下家）
   // 侵袭角标：在普通数字牌里均匀挑 INVASION_COUNT 张打上角标（确定性，便于测试；发牌前还会洗）
   const nums = deck.filter((c) => /^[0-9]$/.test(c.value));
   for (let i = 0; i < INVASION_COUNT && nums.length; i++) {
@@ -197,6 +238,8 @@ export function legalCardIds(s: UnoState, playerId: string): Set<string> {
   for (const card of hand) {
     if (s.justDrew && card.id !== s.drawnCardId) continue;
     if (card.value === "lightning" && s.lightning) continue; // 已有一片闪电在场，不能再挂
+    if (card.value === "dump" && hand.length < 3) continue; // 甩锅至少要 出1+给1+留1=3 张
+    if (card.value === "gamble" && hand.length < 2) continue; // 豪赌至少要 出1+押1=2 张
     if (canPlay(card, top, s.curColor)) out.add(card.id);
   }
   return out;
@@ -263,7 +306,8 @@ function applyStartCardEffect(s: UnoState, first: UnoCard): UnoState {
 }
 
 export type UnoAction =
-  | { type: "play"; player: string; cardId: string; chooseColor?: UnoColor; claim?: "color" | "value" } // claim：质疑牌声称维度
+  | { type: "play"; player: string; cardId: string; chooseColor?: UnoColor; claim?: "color" | "value"; comboValue?: string; picks?: string[] }
+  // chooseColor：变色牌定色 / 燃烧要烧的色；claim：质疑声称维度；comboValue：连击要清的点数；picks：净化/豪赌/甩锅选中的牌 id
   | { type: "draw"; player: string }
   | { type: "pass"; player: string }
   | { type: "swap"; player: string; takeCardId?: string; giveCardId?: string } // 替换：留 take/给 give；都省略=放弃替换
@@ -643,6 +687,138 @@ function applyActionCore(s: UnoState, a: UnoAction): UnoState {
     }; // 回合不推进，等其余玩家表态
   }
 
+  // 🔥 燃烧：选一色，把手里该色牌（上限 BURN_CAP）连同燃烧牌洗回牌堆；不进弃牌堆、不改色。烧空手=获胜。
+  if (card.value === "burn") {
+    const color = a.chooseColor;
+    if (!color) return s; // 必须选要烧的颜色
+    const rest = [...hand.slice(0, idx), ...hand.slice(idx + 1)];
+    const burnt: UnoCard[] = [];
+    const keep: UnoCard[] = [];
+    for (const c of rest) {
+      if (c.color === color && burnt.length < BURN_CAP) burnt.push(c);
+      else keep.push(c);
+    }
+    const pile = [...s.drawPile];
+    reinsertToPile(pile, card);
+    for (const c of burnt) reinsertToPile(pile, c);
+    const ns: UnoState = {
+      ...s, v: s.v + 1, drawPile: pile,
+      hands: { ...s.hands, [a.player]: keep },
+      justDrew: false, drawnCardId: undefined,
+      log: log(s, `${nameOf(s, a.player)} 打出🔥燃烧，烧掉 ${burnt.length} 张${COLOR_NAME[color]}牌（洗回牌堆）`),
+    };
+    if (keep.length === 0) return { ...ns, status: "over", winner: a.player, log: log(ns, `🎉 ${nameOf(s, a.player)} 获胜！`) };
+    return { ...ns, turn: advance(ns, 1) };
+  }
+
+  // 🔁 连击：选一点数，把手里该点牌（上限 COMBO_CAP）连同连击牌洗回牌堆；不进弃牌堆、不改色。清空手=获胜。
+  if (card.value === "combo") {
+    const val = a.comboValue;
+    if (!val) return s; // 必须选要清的点数
+    const rest = [...hand.slice(0, idx), ...hand.slice(idx + 1)];
+    const burnt: UnoCard[] = [];
+    const keep: UnoCard[] = [];
+    for (const c of rest) {
+      if (c.value === val && burnt.length < COMBO_CAP) burnt.push(c);
+      else keep.push(c);
+    }
+    const pile = [...s.drawPile];
+    reinsertToPile(pile, card);
+    for (const c of burnt) reinsertToPile(pile, c);
+    const ns: UnoState = {
+      ...s, v: s.v + 1, drawPile: pile,
+      hands: { ...s.hands, [a.player]: keep },
+      justDrew: false, drawnCardId: undefined,
+      log: log(s, `${nameOf(s, a.player)} 打出🔁连击，甩掉 ${burnt.length} 张「${VALUE_NAME[val] || val}」（洗回牌堆）`),
+    };
+    if (keep.length === 0) return { ...ns, status: "over", winner: a.player, log: log(ns, `🎉 ${nameOf(s, a.player)} 获胜！`) };
+    return { ...ns, turn: advance(ns, 1) };
+  }
+
+  // ♻️ 净化：弃任意（上限 PURGE_DISCARD）张，连同净化牌洗回牌堆；不进弃牌堆、不改色。弃空手=获胜。
+  if (card.value === "purge") {
+    const rest = [...hand.slice(0, idx), ...hand.slice(idx + 1)];
+    const pickSet = new Set((a.picks || []).slice(0, PURGE_DISCARD));
+    const discarded: UnoCard[] = [];
+    const keep: UnoCard[] = [];
+    for (const c of rest) (pickSet.has(c.id) ? discarded : keep).push(c);
+    if (discarded.length !== pickSet.size) return s; // 选了不在手里的牌
+    const pile = [...s.drawPile];
+    reinsertToPile(pile, card);
+    for (const c of discarded) reinsertToPile(pile, c);
+    const ns: UnoState = {
+      ...s, v: s.v + 1, drawPile: pile,
+      hands: { ...s.hands, [a.player]: keep },
+      justDrew: false, drawnCardId: undefined,
+      log: log(s, `${nameOf(s, a.player)} 打出♻️净化，弃掉 ${discarded.length} 张（洗回牌堆）`),
+    };
+    if (keep.length === 0) return { ...ns, status: "over", winner: a.player, log: log(ns, `🎉 ${nameOf(s, a.player)} 获胜！`) };
+    return { ...ns, turn: advance(ns, 1) };
+  }
+
+  // 🎲 豪赌：押 1-GAMBLE_MAX 张并摇骰：点数 > 押注张数→烧掉，否则反摸等量真牌；牌本体洗回牌堆。烧空手=获胜。
+  if (card.value === "gamble") {
+    const rest = [...hand.slice(0, idx), ...hand.slice(idx + 1)];
+    const pickSet = new Set((a.picks || []).slice(0, GAMBLE_MAX));
+    const k = pickSet.size;
+    if (k < 1) return s; // 至少押 1 张
+    if (rest.filter((c) => pickSet.has(c.id)).length !== k) return s; // 选了不在手里的牌
+    const pile = [...s.drawPile];
+    const disc = [...s.discard];
+    const roll = unoRoll();
+    if (roll > k) {
+      // 成功：烧掉押注的 k 张（连同豪赌牌洗回牌堆）
+      const keep = rest.filter((c) => !pickSet.has(c.id));
+      const burnt = rest.filter((c) => pickSet.has(c.id));
+      reinsertToPile(pile, card);
+      for (const c of burnt) reinsertToPile(pile, c);
+      const ns: UnoState = {
+        ...s, v: s.v + 1, drawPile: pile,
+        hands: { ...s.hands, [a.player]: keep },
+        justDrew: false, drawnCardId: undefined,
+        log: log(s, `${nameOf(s, a.player)} 打出🎲豪赌，掷 ${roll} > ${k} 成功，烧掉 ${k} 张！`),
+      };
+      if (keep.length === 0) return { ...ns, status: "over", winner: a.player, log: log(ns, `🎉 ${nameOf(s, a.player)} 获胜！`) };
+      return { ...ns, turn: advance(ns, 1) };
+    }
+    // 失败：押注的牌留着，反摸 k 张真牌（途中可能触发炸弹/电击）；摸完再把豪赌牌洗回，避免被自己摸到
+    const h = [...rest];
+    const before = h.length;
+    const ev = drawReal(pile, disc, h, k);
+    reinsertToPile(pile, card);
+    let lg = log(s, `${nameOf(s, a.player)} 打出🎲豪赌，掷 ${roll} ≤ ${k} 失败，反摸 ${h.length - before} 张`);
+    const traps = trapLog(ev);
+    if (traps.length) lg = [...lg, ...traps].slice(-20);
+    return {
+      ...s, v: s.v + 1, drawPile: pile, discard: disc,
+      hands: { ...s.hands, [a.player]: h },
+      justDrew: false, drawnCardId: undefined,
+      turn: advance(s, 1), log: lg,
+    };
+  }
+
+  // 🫳 甩锅：选最多 DUMP_GIVE 张塞给下家（自己至少留 1 张，给牌不算赢）；牌本体洗回牌堆，不进弃牌堆/不改色。
+  if (card.value === "dump") {
+    const rest = [...hand.slice(0, idx), ...hand.slice(idx + 1)];
+    const maxGive = Math.max(0, rest.length - 1); // 至少给自己留 1 张
+    const pickSet = new Set((a.picks || []).slice(0, DUMP_GIVE));
+    if (pickSet.size < 1 || pickSet.size > maxGive) return s; // 不给牌 / 给到清空都非法
+    const given: UnoCard[] = [];
+    const keep: UnoCard[] = [];
+    for (const c of rest) (pickSet.has(c.id) ? given : keep).push(c);
+    if (given.length !== pickSet.size) return s; // 选了不在手里的牌
+    const targetId = s.players[advance(s, 1)].id;
+    const pile = [...s.drawPile];
+    reinsertToPile(pile, card);
+    return {
+      ...s, v: s.v + 1, drawPile: pile,
+      hands: { ...s.hands, [a.player]: keep, [targetId]: [...(s.hands[targetId] || []), ...given] },
+      justDrew: false, drawnCardId: undefined,
+      turn: advance(s, 1),
+      log: log(s, `${nameOf(s, a.player)} 打出🫳甩锅，塞给 ${nameOf(s, targetId)} ${given.length} 张牌`),
+    };
+  }
+
   const isWild = card.color === "w";
   if (isWild && !a.chooseColor) return s; // 变色牌必须选色
 
@@ -773,6 +949,7 @@ function resolveLightningOnEntry(prev: UnoState, ns: UnoState): UnoState {
 const COLOR_NAME: Record<UnoColor, string> = { r: "红", y: "黄", g: "绿", b: "蓝" };
 const VALUE_NAME: Record<string, string> = {
   skip: "跳过", rev: "反转", d2: "+2", wild: "变色", wd4: "+4", lightning: "闪电", kbomb: "王炸", wrev: "反转", swap: "替换", challenge: "质疑",
+  burn: "燃烧", combo: "连击", purge: "净化", gamble: "豪赌", dump: "甩锅",
 };
 
 /** 人类可读牌名（含变色牌选定的颜色） */

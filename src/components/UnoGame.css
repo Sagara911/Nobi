@@ -436,6 +436,50 @@
   transform: scale(0.95);
 }
 
+/* 连击选点数弹窗：每个点数一格（牌面 + 数量） */
+.uno-combo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.uno-combo-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 48px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+}
+.uno-combo-btn:hover {
+  transform: scale(1.07);
+  background: rgba(255, 255, 255, 0.18);
+}
+.uno-combo-btn:active {
+  transform: scale(0.95);
+}
+.uno-combo-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.uno-combo-face {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.uno-combo-cnt {
+  font-size: 12px;
+  color: #e8b21f;
+  font-weight: 700;
+}
+
 /* 替换选牌弹窗 */
 .uno-swap-box {
   max-width: 92%;
