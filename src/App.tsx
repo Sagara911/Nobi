@@ -26,6 +26,7 @@ import type {
   Asset,
   Collection,
   Filter,
+  FolderNode,
   Menu,
   SelectionTranslatePayload,
   SortKey,
@@ -773,16 +774,18 @@ function App() {
     setStatus(`已从库移除 ${n} 张（原图未动）`);
   }
 
-  /** 整个文件夹从库移除（按父目录完整路径精确匹配，不删原文件） */
+  /** 整个文件夹（含所有子文件夹）从库移除（按路径前缀级联，不删原文件） */
   async function removeFolderAction(dirPath: string) {
-    const ids = assets.filter((a) => dirOf(a.path) === dirPath).map((a) => a.id);
+    const ids = assets.filter((a) => isUnder(a.path, dirPath)).map((a) => a.id);
     if (!ids.length) return;
     const n = await api.removeAssets(ids);
-    if (filter.kind === "folder" && filter.value === dirPath) setFilter({ kind: "all" });
+    // 当前正看的文件夹若被这次级联删掉，回到「全部」
+    if (filter.kind === "folder" && (filter.value === dirPath || isUnder(filter.value, dirPath)))
+      setFilter({ kind: "all" });
     setSel(new Set());
     setSelectedId(null);
     await reload();
-    setStatus(`已移除文件夹「${lastSeg(dirPath)}」的 ${n} 张素材（原文件未动）`);
+    setStatus(`已移除文件夹「${lastSeg(dirPath)}」及其子文件夹的 ${n} 张素材（原文件未动）`);
   }
 
   async function toggleFavorite(id: number, fav: boolean) {
@@ -1209,31 +1212,58 @@ function App() {
   }
 
   // ===== 派生数据 =====
-  // 文件夹按父目录完整路径区分（同名目录不串），显示用目录名，重名自动带上级消歧
+  // 文件夹按父目录完整路径区分（同名目录不串）
   const dirOf = (p: string) => p.replace(/[\\/][^\\/]+$/, "");
   const lastSeg = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-  const folders = useMemo(() => {
-    const m = new Map<string, number>();
+  // 某素材路径是否在 dir 目录（或其任意子目录）下——删除/筛选按前缀级联用
+  const isUnder = (p: string, dir: string) => p.startsWith(dir + "/") || p.startsWith(dir + "\\");
+  // 文件夹树：按目录层级建树，压缩「无直接素材且独子」的链（把 C:\…\ 长前缀折叠到第一个有意义的文件夹），
+  // 大文件夹即便本身没直接图片也会作为父节点出现，可级联删除/筛选其下所有子目录。
+  const folders = useMemo<FolderNode[]>(() => {
+    const self = new Map<string, number>();
     for (const a of assets) {
       const d = dirOf(a.path);
-      if (d) m.set(d, (m.get(d) ?? 0) + 1);
+      if (d) self.set(d, (self.get(d) ?? 0) + 1);
     }
-    const nameCount = new Map<string, number>();
-    for (const k of m.keys()) {
-      const n = lastSeg(k);
-      nameCount.set(n, (nameCount.get(n) ?? 0) + 1);
+    if (self.size === 0) return [];
+    type Raw = { path: string; self: number; children: Set<string> };
+    const raw = new Map<string, Raw>();
+    const ensure = (p: string): Raw => {
+      let n = raw.get(p);
+      if (!n) {
+        n = { path: p, self: 0, children: new Set() };
+        raw.set(p, n);
+      }
+      return n;
+    };
+    // 为每个「直接含素材的目录」补齐其祖先链（dirOf 逐级上溯，保留原始分隔符）
+    for (const [d, c] of self) {
+      ensure(d).self += c;
+      let cur = d;
+      for (;;) {
+        const par = dirOf(cur);
+        if (!par || par === cur) break;
+        ensure(par).children.add(cur);
+        cur = par;
+      }
     }
-    return Array.from(m.entries())
-      .map(([key, count]) => {
-        const segs = key.split(/[\\/]/).filter(Boolean);
-        const name = segs[segs.length - 1] ?? key;
-        const label =
-          (nameCount.get(name) ?? 0) > 1 && segs.length > 1
-            ? `${name} · ${segs[segs.length - 2]}`
-            : name;
-        return { key, label, count };
-      })
-      .sort((a, b) => b.count - a.count);
+    const childOfSomeone = new Set<string>();
+    for (const n of raw.values()) for (const c of n.children) childOfSomeone.add(c);
+    const build = (p: string): FolderNode => {
+      let node = raw.get(p)!;
+      let path = p;
+      while (node.self === 0 && node.children.size === 1) {
+        path = [...node.children][0];
+        node = raw.get(path)!;
+      }
+      const children = [...node.children].map(build).sort((a, b) => b.total - a.total);
+      const total = node.self + children.reduce((s, c) => s + c.total, 0);
+      return { path, label: lastSeg(path), selfCount: node.self, total, children };
+    };
+    return [...raw.keys()]
+      .filter((p) => !childOfSomeone.has(p)) // 根 = 没被任何人当作子目录的节点
+      .map(build)
+      .sort((a, b) => b.total - a.total);
   }, [assets]);
 
   const tags = useMemo(() => {
@@ -1258,7 +1288,7 @@ function App() {
       case "tag":
         return a.tags.some((t) => t === filter.value || t.startsWith(filter.value + "/"));
       case "folder":
-        return dirOf(a.path) === filter.value;
+        return isUnder(a.path, filter.value); // 含该目录及其所有子目录
       case "color":
         return primaryBucket(a.colors) === filter.value;
       case "collection":

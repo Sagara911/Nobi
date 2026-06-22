@@ -36,6 +36,15 @@ export interface Collection {
   createdAt: number;
 }
 
+/** 文件夹树节点（侧栏按目录层级展示；删除/筛选按 path 前缀级联） */
+export interface FolderNode {
+  path: string; // 该目录完整路径（删除/筛选的前缀依据）
+  label: string; // 显示名（通常是末段目录名）
+  selfCount: number; // 直接在该目录下的素材数
+  total: number; // 该目录 + 所有子目录下的素材总数
+  children: FolderNode[];
+}
+
 export type SortKey = "time" | "name" | "size";
 
 export interface AiCmd {

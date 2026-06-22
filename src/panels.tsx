@@ -6,10 +6,11 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { VirtuosoGrid } from "react-virtuoso";
 import type { IDockviewPanelProps } from "dockview";
 
-import type { AiCmd, Asset, Collection, Filter, SortKey } from "./types";
+import type { AiCmd, Asset, Collection, Filter, FolderNode, SortKey } from "./types";
 import { isAudio, isModel, isVideo } from "./utils";
 import Inspector from "./components/Inspector";
 import TagTree from "./components/TagTree";
+import FolderTree from "./components/FolderTree";
 import Section from "./components/Section";
 import BoardCanvas, { type BoardEditor } from "./Board";
 import DocEditor from "./components/DocEditor";
@@ -25,7 +26,7 @@ export interface DockState {
   isActive: (f: Filter) => boolean;
   missingCount: number;
   findDups: () => void;
-  folders: { key: string; label: string; count: number }[]; // key=父目录完整路径
+  folders: FolderNode[]; // 文件夹目录树（根节点数组）
   removeFolder: (dirPath: string) => void;
   colorCounts: Map<string, number>;
   tags: [string, number][];
@@ -187,38 +188,14 @@ function LibraryPanel(_p: IDockviewPanelProps) {
 
       {d.folders.length > 0 && (
         <Section k="side-folders" title={`文件夹 · ${d.folders.length}`}>
-          {folderList.map((f) => (
-            <div
-              key={f.key}
-              className={
-                "nav-item" + (d.isActive({ kind: "folder", value: f.key }) ? " active" : "")
-              }
-              title={f.key}
-              onClick={() => d.toggleFilter({ kind: "folder", value: f.key })}
-            >
-              <span className="ellip">{f.label}</span>
-              <span className="count">{f.count}</span>
-              <button
-                className={"folder-del" + (pendingDel === f.key ? " confirm" : "")}
-                title={
-                  pendingDel === f.key
-                    ? "再点一次确认移除（不删原文件）"
-                    : "从库移除该文件夹（不删原文件）"
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (pendingDel === f.key) {
-                    setPendingDel(null);
-                    d.removeFolder(f.key);
-                  } else {
-                    setPendingDel(f.key);
-                  }
-                }}
-              >
-                {pendingDel === f.key ? "❗" : "✕"}
-              </button>
-            </div>
-          ))}
+          <FolderTree
+            nodes={folderList}
+            isActive={(p) => d.isActive({ kind: "folder", value: p })}
+            onPick={(p) => d.toggleFilter({ kind: "folder", value: p })}
+            onDelete={(p) => d.removeFolder(p)}
+            pendingDel={pendingDel}
+            setPendingDel={setPendingDel}
+          />
           {(hiddenFolders > 0 || allFolders) && d.folders.length > FOLDER_CAP && (
             <div className="nav-item more-row" onClick={() => setAllFolders(!allFolders)}>
               <span>{allFolders ? "收起" : `展开全部（还有 ${hiddenFolders} 个）`}</span>
