@@ -116,6 +116,7 @@ export default function UnoGame({
     (ev: GEvent) => {
       const send = sendRef.current;
       if (ev.k === "lobby") {
+        if (leftGids.current.has(ev.gid)) return; // 已退出这局：接管者重广播的 lobby 也不把我拉回
         setLobby({ gid: ev.gid, host: ev.host, players: ev.players });
         // 收到新一局的 lobby：清掉旧对局状态，回到等待
         setGstate((cur) => (cur && cur.gid !== ev.gid ? null : cur));

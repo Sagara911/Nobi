@@ -281,24 +281,36 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     },
     [appendMsg],
   );
-  // 游戏帧统一出口：优先走 backend.sendGame（瞬时广播、不落历史库），没实现就回退 sendText（自建服务器原样持久化）。
+  // 高频游戏帧（state/action）走 backend.sendGame（瞬时广播、不落历史库），没实现就回退 sendText。
   const sendGameFrame = useCallback((frame: string) => {
     const b = backendRef.current;
     if (!b) return;
     if (b.sendGame) b.sendGame(frame);
     else void b.sendText(frame).catch(() => {});
   }, []);
-  const sendUno = useCallback((ev: GEvent) => sendGameFrame(UNO_TAG + JSON.stringify(ev)), [sendGameFrame]);
+  // 低频但需要"新人/重连补齐"的帧（lobby/join）走持久化通道，靠 history 回放才进得来；高频 state/action 走广播。
+  const sendChatFrame = useCallback((frame: string) => {
+    void backendRef.current?.sendText(frame).catch(() => {});
+  }, []);
+  const routeGameSend = useCallback(
+    (tag: string, ev: { k: string }) => {
+      const frame = tag + JSON.stringify(ev);
+      if (ev.k === "lobby" || ev.k === "join") sendChatFrame(frame); // 可被 history 回放→晚到的人也能看到房间/加入
+      else sendGameFrame(frame); // state/action：瞬时广播，不污染聊天历史
+    },
+    [sendChatFrame, sendGameFrame],
+  );
+  const sendUno = useCallback((ev: GEvent) => routeGameSend(UNO_TAG, ev), [routeGameSend]);
   const subscribeUno = useCallback((fn: (ev: GEvent) => void) => {
     unoListeners.current.add(fn);
     return () => unoListeners.current.delete(fn);
   }, []);
-  const sendLudo = useCallback((ev: LEvent) => sendGameFrame(LUDO_TAG + JSON.stringify(ev)), [sendGameFrame]);
+  const sendLudo = useCallback((ev: LEvent) => routeGameSend(LUDO_TAG, ev), [routeGameSend]);
   const subscribeLudo = useCallback((fn: (ev: LEvent) => void) => {
     ludoListeners.current.add(fn);
     return () => ludoListeners.current.delete(fn);
   }, []);
-  const sendLiar = useCallback((ev: LiarEvent) => sendGameFrame(LIAR_TAG + JSON.stringify(ev)), [sendGameFrame]);
+  const sendLiar = useCallback((ev: LiarEvent) => routeGameSend(LIAR_TAG, ev), [routeGameSend]);
   const subscribeLiar = useCallback((fn: (ev: LiarEvent) => void) => {
     liarListeners.current.add(fn);
     return () => liarListeners.current.delete(fn);

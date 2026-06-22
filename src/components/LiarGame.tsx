@@ -90,6 +90,7 @@ export default function LiarGame({
     (ev: LiarEvent) => {
       const send = sendRef.current;
       if (ev.k === "lobby") {
+        if (leftGids.current.has(ev.gid)) return; // 已退出这局：接管者重广播的 lobby 也不把我拉回
         setLobby({ gid: ev.gid, host: ev.host, players: ev.players });
         setGstate((cur) => (cur && cur.gid !== ev.gid ? null : cur));
         return;
