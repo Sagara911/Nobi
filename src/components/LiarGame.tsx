@@ -244,7 +244,12 @@ export default function LiarGame({
     const lb = lobbyRef.current;
     if (!lb || lb.host !== myId) return;
     const gid = `${myId}-${uid()}`;
-    const players = lb.players;
+    // 每局之间随机换座位：Fisher-Yates 打乱出牌顺序（枪每局重新随机装弹，互不影响）
+    const players = [...lb.players];
+    for (let i = players.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [players[i], players[j]] = [players[j], players[i]];
+    }
     const lb2 = { gid, host: myId, players };
     setLobby(lb2);
     sendGame({ k: "lobby", ...lb2 });
