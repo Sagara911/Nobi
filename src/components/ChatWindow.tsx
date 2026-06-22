@@ -52,6 +52,7 @@ import {
 import "./ChatWindow.css";
 import UnoGame, { UNO_TAG, type GEvent } from "./UnoGame";
 import LudoGame, { LUDO_TAG, type LEvent } from "./LudoGame";
+import LiarGame, { LIAR_TAG, type LiarEvent } from "./LiarGame";
 import GameChat from "./GameChat";
 
 const LAUNCHER_LABEL = "chat";
@@ -255,9 +256,10 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
 
   // 小游戏走聊天通道，但正文带各自的 TAG 前缀：分流给对应游戏、不进消息流。
   // UNO 与飞行棋各用独立 tag + 监听集，互不干扰；UNO 线路保持原样不动。
-  const [openGame, setOpenGame] = useState<null | "uno" | "ludo">(null);
+  const [openGame, setOpenGame] = useState<null | "uno" | "ludo" | "liar">(null);
   const unoListeners = useRef<Set<(ev: GEvent) => void>>(new Set());
   const ludoListeners = useRef<Set<(ev: LEvent) => void>>(new Set());
+  const liarListeners = useRef<Set<(ev: LiarEvent) => void>>(new Set());
   const routeIncoming = useCallback(
     (m: ChatMessage) => {
       const dispatch = <E,>(tag: string, set: Set<(ev: E) => void>): boolean => {
@@ -272,6 +274,7 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
       };
       if (dispatch<GEvent>(UNO_TAG, unoListeners.current)) return;
       if (dispatch<LEvent>(LUDO_TAG, ludoListeners.current)) return;
+      if (dispatch<LiarEvent>(LIAR_TAG, liarListeners.current)) return;
       appendMsg(m);
     },
     [appendMsg],
@@ -289,6 +292,13 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   const subscribeLudo = useCallback((fn: (ev: LEvent) => void) => {
     ludoListeners.current.add(fn);
     return () => ludoListeners.current.delete(fn);
+  }, []);
+  const sendLiar = useCallback((ev: LiarEvent) => {
+    void backendRef.current?.sendText(LIAR_TAG + JSON.stringify(ev)).catch(() => {});
+  }, []);
+  const subscribeLiar = useCallback((fn: (ev: LiarEvent) => void) => {
+    liarListeners.current.add(fn);
+    return () => liarListeners.current.delete(fn);
   }, []);
 
   // 活跃连接标记 + 未读清零：聚焦=正在看→记活跃+清红点；失焦/关窗=没在看→主窗能为它弹提醒
@@ -582,6 +592,13 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
           >
             🎲
           </button>
+          <button
+            className={`chat-gear${openGame === "liar" ? " on" : ""}`}
+            title="骗子酒馆"
+            onClick={() => setOpenGame((g) => (g === "liar" ? null : "liar"))}
+          >
+            🍷
+          </button>
           <button className="chat-gear" title="发起/加入别的群" onClick={() => void openLauncherWindow()}>＋</button>
           {/* 自定义窗口控制：便签是隐身窗(toolwindow)，系统标题栏只剩关闭，这里补上 放大/隐藏 */}
           <button
@@ -615,6 +632,14 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
         myName={nickname}
         sendGame={sendLudo}
         subscribeGame={subscribeLudo}
+        onClose={() => setOpenGame(null)}
+      />
+      <LiarGame
+        open={openGame === "liar"}
+        myId={cfg.clientId}
+        myName={nickname}
+        sendGame={sendLiar}
+        subscribeGame={subscribeLiar}
         onClose={() => setOpenGame(null)}
       />
       {openGame && <GameChat messages={messages} myId={cfg.clientId} onSend={sendChatText} />}

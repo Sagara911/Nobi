@@ -1,0 +1,456 @@
+/* 骗子酒馆面板：覆盖在聊天窗内容区上方（与 UNO 同一套覆盖布局） */
+.liar-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: #16130f; /* 暖色酒馆底 */
+  color: #ece6dd;
+  overflow-y: auto;
+  padding-bottom: 46px; /* 给游戏内聊天底部输入条留位 */
+}
+.liar-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #36302a;
+  background: #1f1a15;
+}
+.liar-title {
+  font-weight: 700;
+}
+.liar-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.liar-leave {
+  background: #2c2620;
+  border: 1px solid #463e35;
+  color: #d8cfc2;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.liar-leave:hover {
+  border-color: #c0584f;
+  color: #ff9b9b;
+}
+.liar-leave:active {
+  transform: translateY(1px);
+}
+.liar-x {
+  background: transparent;
+  border: none;
+  color: #a59a8b;
+  font-size: 15px;
+  cursor: pointer;
+}
+.liar-x:hover {
+  color: #fff;
+}
+
+.liar-idle,
+.liar-lobby {
+  padding: 16px;
+  text-align: center;
+}
+.liar-hint {
+  font-size: 12px;
+  color: #9a8f7e;
+  margin: 8px 0 0;
+}
+.liar-callout {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #e0b34a;
+  font-weight: 700;
+}
+
+/* 按钮 */
+.liar-btn {
+  background: #2c2620;
+  border: 1px solid #4a4136;
+  color: #ece6dd;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.liar-btn:hover:not(:disabled) {
+  border-color: #6a5d4c;
+}
+.liar-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.liar-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.liar-btn.primary {
+  background: #b5832a;
+  border-color: #d6a23a;
+  color: #1a1409;
+  font-weight: 700;
+}
+.liar-btn.primary:hover:not(:disabled) {
+  background: #c8923a;
+}
+.liar-btn.danger {
+  background: #7c2b25;
+  border-color: #b2453c;
+  color: #ffe7e3;
+  font-weight: 700;
+}
+.liar-btn.danger:hover:not(:disabled) {
+  background: #95342c;
+}
+
+.liar-lobby-title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.liar-players {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.liar-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.liar-hostgone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #3a2a18;
+  border: 1px solid #6b4a23;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* 座位 */
+.liar-seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.liar-seat {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 64px;
+  padding: 5px 9px;
+  border-radius: 9px;
+  background: #221d18;
+  border: 1px solid #38312a;
+  font-size: 12px;
+  position: relative;
+}
+.liar-seat.turn {
+  border-color: #e0b34a;
+  box-shadow: 0 0 0 1px #e0b34a, 0 0 10px #e0b34a55;
+}
+.liar-seat.me .liar-seat-name {
+  color: #e0b34a;
+}
+.liar-seat.dead {
+  opacity: 0.5;
+  filter: grayscale(0.7);
+}
+.liar-seat-name {
+  font-weight: 600;
+}
+.liar-seat-gun {
+  font-size: 11px;
+  color: #b79e7e;
+}
+.liar-seat-arrow {
+  position: absolute;
+  right: -4px;
+  top: -6px;
+  color: #e0b34a;
+  font-weight: 800;
+}
+
+/* 牌桌中央 */
+.liar-table {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 2px solid #6a5d4c;
+  border-radius: 12px;
+  background: #1d1813;
+}
+.liar-rank-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.liar-rank-label {
+  font-size: 11px;
+  color: #9a8f7e;
+}
+.liar-rank-big {
+  width: 48px;
+  height: 64px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.liar-claim {
+  flex: 1;
+  min-width: 0;
+}
+.liar-claim-pile {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.liar-claim-text {
+  font-size: 13px;
+}
+.liar-claim-text.dim {
+  color: #9a8f7e;
+}
+.liar-claim-sub {
+  font-size: 11px;
+  color: #8a7f6e;
+  margin-top: 3px;
+}
+
+/* 状态条 */
+.liar-turnbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #221d18;
+  border: 1px solid #38312a;
+  font-size: 13px;
+}
+.liar-turnbar.mine {
+  background: #2e2614;
+  border-color: #6b5524;
+  color: #f0d68f;
+  font-weight: 600;
+}
+.liar-timer {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: #b79e7e;
+}
+.liar-timer.urgent {
+  color: #ff9b6b;
+  font-weight: 700;
+}
+.liar-timer.over {
+  color: #ff6b6b;
+  font-weight: 700;
+  animation: liar-blink 0.7s steps(2, start) infinite;
+}
+@keyframes liar-blink {
+  to {
+    opacity: 0.3;
+  }
+}
+
+/* 手牌 */
+.liar-hand-label {
+  font-size: 12px;
+  color: #9a8f7e;
+}
+.liar-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 56px;
+}
+.liar-card {
+  width: 40px;
+  height: 56px;
+  border-radius: 7px;
+  border: 1px solid #d8cdb8;
+  background: #f3ecdc;
+  font-size: 22px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+.liar-card.playable {
+  cursor: pointer;
+}
+.liar-card.playable:hover {
+  transform: translateY(-3px);
+}
+.liar-card.sel {
+  border-color: #e0b34a;
+  box-shadow: 0 0 0 2px #e0b34a, 0 0 10px #e0b34a88;
+  transform: translateY(-6px);
+}
+/* 牌背（盖着的牌 / 占位） */
+.liar-card.back {
+  background: repeating-linear-gradient(45deg, #6a3b2e, #6a3b2e 5px, #7c4636 5px, #7c4636 10px);
+  border-color: #4a2a20;
+  cursor: default;
+}
+
+.liar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 日志 */
+.liar-log {
+  font-size: 12px;
+  color: #b0a596;
+  background: #1b1712;
+  border: 1px solid #322b24;
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 结束 */
+.liar-over {
+  text-align: center;
+  padding: 10px;
+}
+.liar-over-text {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f0d68f;
+  margin-bottom: 12px;
+}
+.liar-over-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 摊牌结算弹层 */
+.liar-reveal {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.62);
+  padding: 16px;
+}
+.liar-reveal-box {
+  background: #221c16;
+  border: 1px solid #5a4b39;
+  border-radius: 14px;
+  padding: 18px 20px;
+  text-align: center;
+  max-width: 92%;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+.liar-reveal-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #f0d68f;
+}
+.liar-reveal-sub {
+  font-size: 12px;
+  color: #9a8f7e;
+  margin: 4px 0 12px;
+}
+.liar-reveal-cards {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.liar-reveal-card {
+  width: 46px;
+  height: 64px;
+  border-radius: 8px;
+  background: #f3ecdc;
+  font-size: 26px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: liar-flip 0.4s ease;
+}
+.liar-reveal-card.ok {
+  box-shadow: 0 0 0 2px #3a9e4d;
+}
+.liar-reveal-card.bad {
+  box-shadow: 0 0 0 2px #e0413a;
+}
+@keyframes liar-flip {
+  from {
+    transform: rotateY(90deg);
+    opacity: 0;
+  }
+  to {
+    transform: rotateY(0);
+    opacity: 1;
+  }
+}
+.liar-reveal-verdict {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.liar-reveal-verdict.lie {
+  color: #ff7a6b;
+}
+.liar-reveal-verdict.true {
+  color: #6bd08a;
+}
+.liar-reveal-shot {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+.liar-reveal-shot.dead {
+  color: #ff5a5a;
+  animation: liar-bang 0.4s ease;
+}
+.liar-reveal-shot.safe {
+  color: #b0c8a0;
+}
+@keyframes liar-bang {
+  0% {
+    transform: scale(0.6);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
