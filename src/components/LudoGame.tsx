@@ -87,6 +87,7 @@ export default function LudoGame({
   const hostStateRef = useRef<LudoState | null>(null);
   const processedAids = useRef<Set<string>>(new Set());
   const seenVersion = useRef<Record<string, number>>({});
+  const leftGids = useRef<Set<string>>(new Set()); // 点过「退出」的局 id：之后该局快照一律不收，不被拉回
   const lobbyRef = useRef(lobby);
   lobbyRef.current = lobby;
   const sendRef = useRef(sendGame);
@@ -114,6 +115,7 @@ export default function LudoGame({
         return;
       }
       if (ev.k === "state") {
+        if (leftGids.current.has(ev.s.gid)) return; // 已退出这局：忽略后续快照，不被拉回
         const seen = seenVersion.current[ev.s.gid] || 0;
         if (ev.s.v <= seen) return;
         seenVersion.current[ev.s.gid] = ev.s.v;
@@ -125,6 +127,7 @@ export default function LudoGame({
         if (!host || host.gid !== ev.gid) return;
         if (processedAids.current.has(ev.aid)) return;
         processedAids.current.add(ev.aid);
+        if (processedAids.current.size > 800) processedAids.current = new Set(); // 防长会话无限增长
         const ns = applyAction(host, ev.a);
         if (ns === host) return; // 非法动作忽略
         hostStateRef.current = ns;
@@ -141,6 +144,8 @@ export default function LudoGame({
   }, [gstate]);
 
   const reset = () => {
+    const gid = lobbyRef.current?.gid; // 标记这局「已离开」，之后该局快照一律不收
+    if (gid) leftGids.current.add(gid);
     setLobby(null);
     setGstate(null);
     setPending(false);

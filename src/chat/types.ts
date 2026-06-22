@@ -95,6 +95,13 @@ export interface ChatBackend {
   sendAsset(asset: OutgoingAsset, caption?: string): Promise<void>;
 
   /**
+   * 发一条「瞬时帧」（小游戏同步用）：尽量只实时广播、**不写历史库**，避免每 3 秒的心跳把聊天历史灌满。
+   * 可选能力；未实现的 backend 由调用方回退到 sendText（自建服务器即走原持久化路径，无回归）。
+   * fire-and-forget：不保证送达，丢了靠房主心跳补。
+   */
+  sendGame?(text: string): void;
+
+  /**
    * 改昵称 / 头像，不重连——之后发出的消息即用新身份（房间/订阅不依赖昵称）。
    * 可选能力；UI 调用前用 `?.` 兜底。旧消息保留发送时的名字，不回改。
    */

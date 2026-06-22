@@ -275,27 +275,30 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
       if (dispatch<GEvent>(UNO_TAG, unoListeners.current)) return;
       if (dispatch<LEvent>(LUDO_TAG, ludoListeners.current)) return;
       if (dispatch<LiarEvent>(LIAR_TAG, liarListeners.current)) return;
+      // 兜底：任何以控制字符(<0x08)开头的帧都是游戏/系统帧，绝不进消息流——防以后新增游戏的帧在旧客户端刷屏成乱码消息
+      if (m.body && m.body.charCodeAt(0) < 0x08) return;
       appendMsg(m);
     },
     [appendMsg],
   );
-  const sendUno = useCallback((ev: GEvent) => {
-    void backendRef.current?.sendText(UNO_TAG + JSON.stringify(ev)).catch(() => {});
+  // 游戏帧统一出口：优先走 backend.sendGame（瞬时广播、不落历史库），没实现就回退 sendText（自建服务器原样持久化）。
+  const sendGameFrame = useCallback((frame: string) => {
+    const b = backendRef.current;
+    if (!b) return;
+    if (b.sendGame) b.sendGame(frame);
+    else void b.sendText(frame).catch(() => {});
   }, []);
+  const sendUno = useCallback((ev: GEvent) => sendGameFrame(UNO_TAG + JSON.stringify(ev)), [sendGameFrame]);
   const subscribeUno = useCallback((fn: (ev: GEvent) => void) => {
     unoListeners.current.add(fn);
     return () => unoListeners.current.delete(fn);
   }, []);
-  const sendLudo = useCallback((ev: LEvent) => {
-    void backendRef.current?.sendText(LUDO_TAG + JSON.stringify(ev)).catch(() => {});
-  }, []);
+  const sendLudo = useCallback((ev: LEvent) => sendGameFrame(LUDO_TAG + JSON.stringify(ev)), [sendGameFrame]);
   const subscribeLudo = useCallback((fn: (ev: LEvent) => void) => {
     ludoListeners.current.add(fn);
     return () => ludoListeners.current.delete(fn);
   }, []);
-  const sendLiar = useCallback((ev: LiarEvent) => {
-    void backendRef.current?.sendText(LIAR_TAG + JSON.stringify(ev)).catch(() => {});
-  }, []);
+  const sendLiar = useCallback((ev: LiarEvent) => sendGameFrame(LIAR_TAG + JSON.stringify(ev)), [sendGameFrame]);
   const subscribeLiar = useCallback((fn: (ev: LiarEvent) => void) => {
     liarListeners.current.add(fn);
     return () => liarListeners.current.delete(fn);

@@ -76,6 +76,7 @@ export default function LiarGame({
   const processedAids = useRef<Set<string>>(new Set());
   const seenVersion = useRef<Record<string, number>>({});
   const lastStateAt = useRef<number>(Date.now());
+  const leftGids = useRef<Set<string>>(new Set()); // 点过「退出」的局 id：心跳/快照再来也不把我拉回
   const [hostGone, setHostGone] = useState(false);
   const lobbyRef = useRef(lobby);
   lobbyRef.current = lobby;
@@ -104,6 +105,7 @@ export default function LiarGame({
       }
       if (ev.k === "state") {
         const s = ev.s;
+        if (leftGids.current.has(s.gid)) return; // 已退出这局：忽略后续快照（含房主心跳），不被拉回
         lastStateAt.current = Date.now();
         setHostGone(false);
         const seen = seenVersion.current[s.gid] || 0;
@@ -117,6 +119,7 @@ export default function LiarGame({
         if (!host || host.gid !== ev.gid) return;
         if (processedAids.current.has(ev.aid)) return;
         processedAids.current.add(ev.aid);
+        if (processedAids.current.size > 800) processedAids.current = new Set(); // 防长会话无限增长（旧 aid 重放也会被 turn/版本校验挡掉）
         const ns = applyLiar(host, ev.a);
         if (ns === host) return; // 非法动作
         hostStateRef.current = ns;
@@ -192,6 +195,8 @@ export default function LiarGame({
   }, [gstate?.gid, gstate?.v, gstate?.turn, gstate?.status, gstate?.result]);
 
   const reset = () => {
+    const gid = lobbyRef.current?.gid; // 记下这局，标记为「已离开」——之后该局的心跳/快照一律不收
+    if (gid) leftGids.current.add(gid);
     setLobby(null);
     setGstate(null);
     setSel([]);

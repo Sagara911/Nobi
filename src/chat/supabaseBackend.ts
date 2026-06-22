@@ -77,7 +77,7 @@ export class SupabaseBackend implements ChatBackend {
     this.emitStatus("connecting");
     const room = this.cfg.room;
     this.channel = this.client
-      .channel(`room:${room}`)
+      .channel(`room:${room}`, { config: { broadcast: { self: true } } }) // self:true→自己发的游戏帧也回显（房主据此处理自己的动作）
       .on(
         "postgres_changes",
         {
@@ -91,6 +91,21 @@ export class SupabaseBackend implements ChatBackend {
           this.msgCbs.forEach((cb) => cb(msg));
         },
       )
+      .on("broadcast", { event: "g" }, ({ payload }) => {
+        // 游戏瞬时帧（不落库）：合成一条最小 ChatMessage 交给 onMessage，路由层按 TAG 分流给对应游戏
+        const p = payload as { id?: string; sender?: string; client_id?: string; body?: string };
+        if (typeof p?.body !== "string") return;
+        const msg: ChatMessage = {
+          id: p.id || `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          room,
+          sender: p.sender || "",
+          clientId: p.client_id || "",
+          kind: "text",
+          body: p.body,
+          createdAt: Date.now(),
+        };
+        this.msgCbs.forEach((cb) => cb(msg));
+      })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") this.emitStatus("connected");
         else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
@@ -115,6 +130,20 @@ export class SupabaseBackend implements ChatBackend {
       ({ error } = await this.client.from(TABLE).insert(rest));
     }
     if (error) throw new Error(error.message);
+  }
+
+  /** 游戏同步帧：走 realtime broadcast，**不写消息表**（不污染聊天历史）。fire-and-forget。 */
+  sendGame(text: string): void {
+    void this.channel?.send({
+      type: "broadcast",
+      event: "g",
+      payload: {
+        id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        sender: this.cfg.nickname,
+        client_id: this.cfg.clientId,
+        body: text,
+      },
+    });
   }
 
   async sendText(text: string): Promise<void> {

@@ -102,6 +102,7 @@ export default function UnoGame({
   const processedAids = useRef<Set<string>>(new Set());
   const seenVersion = useRef<Record<string, number>>({});
   const lastStateAt = useRef<number>(Date.now()); // 最近一次收到权威快照的时刻（判房主是否掉线）
+  const leftGids = useRef<Set<string>>(new Set()); // 点过「退出」的局 id：心跳/快照再来也不把我拉回
   const [hostGone, setHostGone] = useState(false); // 长时间收不到房主同步 → 显示「接管房主」入口
   const lobbyRef = useRef(lobby);
   lobbyRef.current = lobby;
@@ -131,6 +132,7 @@ export default function UnoGame({
       }
       if (ev.k === "state") {
         const s = ev.s;
+        if (leftGids.current.has(s.gid)) return; // 已退出这局：忽略后续快照（含房主心跳），不被拉回
         lastStateAt.current = Date.now(); // 收到任意权威快照（含心跳）即说明房主在线
         setHostGone(false);
         const seen = seenVersion.current[s.gid] || 0;
@@ -144,6 +146,7 @@ export default function UnoGame({
         if (!host || host.gid !== ev.gid) return; // 只有房主有权威态才处理
         if (processedAids.current.has(ev.aid)) return; // 去重
         processedAids.current.add(ev.aid);
+        if (processedAids.current.size > 800) processedAids.current = new Set(); // 防长会话无限增长（旧 aid 重放也会被 turn/版本校验挡掉）
         const ns = applyAction(host, ev.a);
         if (ns === host) return; // 非法动作，忽略
         hostStateRef.current = ns;
@@ -234,6 +237,8 @@ export default function UnoGame({
 
   // 退出当前对局 / 大厅，回到初始（任何人随时可用——结算卡死的逃生口）
   const reset = () => {
+    const gid = lobbyRef.current?.gid; // 记下这局，标记为「已离开」——之后该局的心跳/快照一律不收
+    if (gid) leftGids.current.add(gid);
     setLobby(null);
     setGstate(null);
     setColorPick(null);
