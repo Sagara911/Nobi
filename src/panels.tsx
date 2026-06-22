@@ -25,6 +25,12 @@ export interface DockState {
   toggleFilter: (f: Filter) => void; // 再点已激活的=取消回全部
   isActive: (f: Filter) => boolean;
   missingCount: number;
+  trashedCount: number; // 回收站项数
+  autoSync: boolean; // 文件夹实时监听开关
+  toggleAutoSync: () => void;
+  restoreSelected: () => void; // 回收站：恢复选中
+  purgeSelected: () => void; // 回收站：彻底删除选中
+  emptyTrash: () => void; // 回收站：清空
   findDups: () => void;
   folders: FolderNode[]; // 文件夹目录树（根节点数组）
   removeFolder: (dirPath: string) => void;
@@ -149,7 +155,35 @@ function LibraryPanel(_p: IDockviewPanelProps) {
           >
             ⧉ 重复项
           </button>
+          <button
+            className={"side-chip" + (d.isActive({ kind: "trash" }) ? " active" : "")}
+            onClick={() => d.toggleFilter({ kind: "trash" })}
+            title="回收站：被移除的素材软删除到这里，可恢复；彻底删除才真正从库清掉（始终不动原图）"
+          >
+            🗑 回收站
+            <span className="count">{d.trashedCount}</span>
+          </button>
+          <button
+            className={"side-chip" + (d.autoSync ? " active" : "")}
+            onClick={d.toggleAutoSync}
+            title="文件夹实时监听：开启后，往已导入的文件夹里加新文件会自动入库；磁盘上删掉的会标灰失效"
+          >
+            {d.autoSync ? "🔄 自动同步:开" : "⏸ 自动同步:关"}
+          </button>
         </div>
+        {d.isActive({ kind: "trash" }) && (
+          <div className="trash-bar">
+            <button className="trash-btn" disabled={d.sel.size === 0} onClick={d.restoreSelected}>
+              恢复选中（{d.sel.size}）
+            </button>
+            <button className="trash-btn danger" disabled={d.sel.size === 0} onClick={d.purgeSelected}>
+              彻底删除选中
+            </button>
+            <button className="trash-btn danger" disabled={d.trashedCount === 0} onClick={d.emptyTrash}>
+              清空回收站
+            </button>
+          </div>
+        )}
       </Section>
 
       {d.collections.length > 0 && (

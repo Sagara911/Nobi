@@ -9,12 +9,12 @@ use tauri::Manager;
 use walkdir::WalkDir;
 
 use crate::db::{
-    fetch_assets, now_secs, open_db, Asset, AUDIO_EXTS, ENABLE_3D, IMAGE_EXTS, MODEL_EXTS,
-    VIDEO_EXTS,
+    fetch_assets, fetch_trashed, now_secs, open_db, Asset, AUDIO_EXTS, ENABLE_3D, IMAGE_EXTS,
+    MODEL_EXTS, VIDEO_EXTS,
 };
 
 /// 递归扫描一个路径（文件或文件夹），图片入库。返回新增数量。
-fn scan_path(conn: &Connection, path: &str, now: i64) -> Result<usize, String> {
+pub(crate) fn scan_path(conn: &Connection, path: &str, now: i64) -> Result<usize, String> {
     let mut added = 0usize;
 
     for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
@@ -84,7 +84,9 @@ fn scan_path(conn: &Connection, path: &str, now: i64) -> Result<usize, String> {
 #[tauri::command]
 pub fn import_folder(app: tauri::AppHandle, path: String) -> Result<usize, String> {
     let conn = open_db(&app)?;
-    scan_path(&conn, &path, now_secs())
+    let n = scan_path(&conn, &path, now_secs())?;
+    crate::watch::add_roots(&app, vec![path]); // 记住这个导入根并挂上实时监听（按开关）
+    Ok(n)
 }
 
 /// 导入多个路径（拖拽进来的文件/文件夹）。返回新增数量。
@@ -93,8 +95,15 @@ pub fn import_paths(app: tauri::AppHandle, paths: Vec<String>) -> Result<usize, 
     let conn = open_db(&app)?;
     let now = now_secs();
     let mut added = 0usize;
+    let mut dirs = Vec::new();
     for p in paths {
         added += scan_path(&conn, &p, now)?;
+        if std::path::Path::new(&p).is_dir() {
+            dirs.push(p);
+        }
+    }
+    if !dirs.is_empty() {
+        crate::watch::add_roots(&app, dirs); // 拖进来的文件夹也加入实时监听
     }
     Ok(added)
 }
@@ -246,27 +255,58 @@ pub fn clear_assets(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 从库移除一条记录（只删数据库与缩略图缓存，**不动原图**，符合"数据不锁定"）
+/// 从库移除一条记录 → **软删除进回收站**（保留所有元数据与缩略图，可恢复；**不动原图**）
 #[tauri::command]
 pub fn remove_asset(app: tauri::AppHandle, id: i64) -> Result<(), String> {
     let conn = open_db(&app)?;
-    if let Ok(thumb) = conn.query_row(
-        "SELECT COALESCE(thumb,'') FROM assets WHERE id=?1",
-        rusqlite::params![id],
-        |r| r.get::<_, String>(0),
-    ) {
-        if !thumb.is_empty() {
-            let _ = fs::remove_file(&thumb);
-        }
-    }
-    conn.execute("DELETE FROM assets WHERE id=?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE assets SET trashed_at=?1 WHERE id=?2 AND trashed_at IS NULL",
+        rusqlite::params![now_secs(), id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// 批量从库移除（清缩略图缓存，**不动原图**）
+/// 批量移除 → 软删除进回收站（保留元数据/缩略图，可恢复；**不动原图**）
 #[tauri::command]
 pub fn remove_assets(app: tauri::AppHandle, ids: Vec<i64>) -> Result<usize, String> {
+    let conn = open_db(&app)?;
+    let now = now_secs();
+    let mut n = 0usize;
+    for id in ids {
+        n += conn
+            .execute(
+                "UPDATE assets SET trashed_at=?1 WHERE id=?2 AND trashed_at IS NULL",
+                rusqlite::params![now, id],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+/// 回收站列表（软删除的素材）
+#[tauri::command]
+pub fn list_trashed(app: tauri::AppHandle) -> Result<Vec<Asset>, String> {
+    let conn = open_db(&app)?;
+    fetch_trashed(&conn)
+}
+
+/// 从回收站恢复（trashed_at 清空，回到在库）
+#[tauri::command]
+pub fn restore_assets(app: tauri::AppHandle, ids: Vec<i64>) -> Result<usize, String> {
+    let conn = open_db(&app)?;
+    let mut n = 0usize;
+    for id in ids {
+        n += conn
+            .execute("UPDATE assets SET trashed_at=NULL WHERE id=?1", rusqlite::params![id])
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+/// 彻底删除指定素材（真正从库删除 + 删缩略图缓存，**仍不动原图**，不可恢复）
+#[tauri::command]
+pub fn purge_assets(app: tauri::AppHandle, ids: Vec<i64>) -> Result<usize, String> {
     let conn = open_db(&app)?;
     let mut n = 0usize;
     for id in ids {
@@ -284,6 +324,27 @@ pub fn remove_assets(app: tauri::AppHandle, ids: Vec<i64>) -> Result<usize, Stri
             .map_err(|e| e.to_string())?;
     }
     Ok(n)
+}
+
+/// 清空回收站（彻底删除所有软删除项 + 其缩略图，**不动原图**，不可恢复）
+#[tauri::command]
+pub fn empty_trash(app: tauri::AppHandle) -> Result<usize, String> {
+    let conn = open_db(&app)?;
+    let mut stmt = conn
+        .prepare("SELECT COALESCE(thumb,'') FROM assets WHERE trashed_at IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    let thumbs: Vec<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .filter(|t| !t.is_empty())
+        .collect();
+    drop(stmt);
+    for t in thumbs {
+        let _ = fs::remove_file(&t);
+    }
+    conn.execute("DELETE FROM assets WHERE trashed_at IS NOT NULL", [])
+        .map_err(|e| e.to_string())
 }
 
 /// 把某个文件夹的素材整体从库移除（清缩略图缓存，**不动原文件**），返回移除数量

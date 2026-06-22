@@ -27,6 +27,7 @@ export type Filter =
   | { kind: "collection"; value: string } // value = 合集 id（字符串）
   | { kind: "missing" }
   | { kind: "favorite" }
+  | { kind: "trash" } // 回收站（软删除的素材）
   | { kind: "type"; value: "image" | "video" | "audio" };
 
 export interface Collection {

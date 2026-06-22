@@ -167,6 +167,7 @@ pub fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
     let _ = conn.execute("ALTER TABLE assets ADD COLUMN embedding TEXT", []);
     let _ = conn.execute("ALTER TABLE assets ADD COLUMN clip_embedding TEXT", []);
     let _ = conn.execute("ALTER TABLE assets ADD COLUMN favorite INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE assets ADD COLUMN trashed_at INTEGER", []); // 回收站：非空=软删除时间，正常查询排除
     Ok(conn)
 }
 
@@ -188,14 +189,23 @@ pub fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-/// 公共查询：读出全部素材
+/// 公共查询：读出在库素材（不含回收站）
 pub fn fetch_assets(conn: &Connection) -> Result<Vec<Asset>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id,path,name,format,width,height,size_bytes,folder,source,author,tags,added_at,thumb,colors,COALESCE(favorite,0)
-             FROM assets ORDER BY added_at DESC, id DESC",
-        )
-        .map_err(|e| e.to_string())?;
+    query_assets(conn, "trashed_at IS NULL")
+}
+
+/// 读出回收站里的素材（软删除的）
+pub fn fetch_trashed(conn: &Connection) -> Result<Vec<Asset>, String> {
+    query_assets(conn, "trashed_at IS NOT NULL")
+}
+
+/// 按 where 子句查询素材（trashed_at IS NULL / IS NOT NULL 区分在库 / 回收站）
+fn query_assets(conn: &Connection, where_sql: &str) -> Result<Vec<Asset>, String> {
+    let sql = format!(
+        "SELECT id,path,name,format,width,height,size_bytes,folder,source,author,tags,added_at,thumb,colors,COALESCE(favorite,0)
+         FROM assets WHERE {where_sql} ORDER BY added_at DESC, id DESC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], |row| {

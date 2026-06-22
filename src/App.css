@@ -227,6 +227,15 @@ body {
 .side-chip.active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
 .side-chip .count { color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 .side-chip.active .count { color: var(--accent); opacity: 0.7; }
+/* 回收站操作条 */
+.trash-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.trash-btn {
+  padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  background: var(--surface-2); border: 1px solid var(--surface-3); color: var(--text-2);
+}
+.trash-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text-1); }
+.trash-btn.danger:hover:not(:disabled) { border-color: #c0584f; color: #ff9b9b; }
+.trash-btn:disabled { opacity: 0.4; cursor: default; }
 .nav-item.child { font-size: 12.5px; }
 .nav-item.dim { color: var(--text-3); cursor: default; font-size: 12px; }
 .nav-item.dim:hover { background: transparent; color: var(--text-3); }

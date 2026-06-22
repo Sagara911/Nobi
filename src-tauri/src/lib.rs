@@ -24,6 +24,7 @@ mod selection_translate;
 mod settings;
 mod thumbs;
 mod translation;
+mod watch;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -1558,9 +1559,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .manage(watch::WatchState(std::sync::Mutex::new(None)))
         .setup(|app| {
             collect::start_collect_server(app.handle().clone());
             selection_translate::start(app.handle().clone());
+
+            // 文件夹实时监听：把上次导入的根目录重新挂上监听（按「自动同步」开关）
+            let _ = watch::rewatch(app.handle());
 
             // 看球窗偏好（透明度/缩放）跨重启记忆
             #[cfg(desktop)]
@@ -2041,6 +2046,14 @@ pub fn run() {
             library::clear_assets,
             library::remove_asset,
             library::remove_assets,
+            library::list_trashed,
+            library::restore_assets,
+            library::purge_assets,
+            library::empty_trash,
+            watch::get_auto_sync,
+            watch::set_auto_sync,
+            watch::list_watched,
+            watch::unwatch_folder,
             library::remove_folder,
             library::set_favorite,
             library::set_tags,

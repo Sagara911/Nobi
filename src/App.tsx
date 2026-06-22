@@ -70,6 +70,8 @@ const SELECTION_TRANSLATE_STORAGE_KEY = "nobi.selectionTranslate.payload";
 function App() {
   // ===== 状态 =====
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [trashed, setTrashed] = useState<Asset[]>([]); // 回收站（软删除）
+  const [autoSync, setAutoSyncState] = useState(true); // 文件夹实时监听开关
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [query, setQuery] = useState("");
@@ -290,6 +292,7 @@ function App() {
   const reload = useCallback(async () => {
     try {
       setAssets(await api.listAssets());
+      api.listTrashed().then(setTrashed).catch(() => {}); // 回收站单独拉，不挡主列表
     } catch (e) {
       setStatus(`加载失败：${e}`);
     }
@@ -327,6 +330,7 @@ function App() {
       await reload();
       loadCmds();
       loadCollections();
+      api.getAutoSync().then(setAutoSyncState).catch(() => {});
       await buildThumbs();
       // 失效链接检测移到后台跑：不阻塞首屏（大库时逐条 stat 磁盘会卡死），算完再回填 missing 标记
       try {
@@ -416,6 +420,14 @@ function App() {
     });
     const un2 = listen("library-changed", async () => {
       await reload();
+      // 监听到文件夹变化(含磁盘删除)→重算失效，让被删/移走的素材实时标灰
+      try {
+        const ids = await api.checkMissing();
+        const s = new Set(ids);
+        setAssets((prev) => prev.map((a) => ({ ...a, missing: s.has(a.id) })));
+      } catch {
+        /* ignore */
+      }
     });
     return () => {
       un1.then((f) => f());
@@ -773,7 +785,7 @@ function App() {
     await reload();
   }
 
-  /** 批量从库移除当前多选（不删原图） */
+  /** 批量从库移除当前多选 → 进回收站（可恢复，不删原图） */
   async function removeSelectedAction() {
     const ids = Array.from(sel);
     if (!ids.length) return;
@@ -781,7 +793,51 @@ function App() {
     setSel(new Set());
     if (selectedId !== null && ids.includes(selectedId)) setSelectedId(null);
     await reload();
-    setStatus(`已从库移除 ${n} 张（原图未动）`);
+    setStatus(`已移入回收站 ${n} 张（可恢复，原图未动）`);
+  }
+
+  /** 回收站：恢复选中 */
+  async function restoreSelectedAction() {
+    const ids = Array.from(sel);
+    if (!ids.length) return;
+    const n = await api.restoreAssets(ids);
+    setSel(new Set());
+    await reload();
+    setStatus(`已恢复 ${n} 项`);
+  }
+
+  /** 回收站：彻底删除选中（不可恢复，仍不动原图） */
+  async function purgeSelectedAction() {
+    const ids = Array.from(sel);
+    if (!ids.length) return;
+    if (!window.confirm(`彻底删除选中的 ${ids.length} 项？不可恢复（原图不动，但 Nobi 里的标签/收藏/合集会一起没）。`))
+      return;
+    const n = await api.purgeAssets(ids);
+    setSel(new Set());
+    await reload();
+    setStatus(`已彻底删除 ${n} 项`);
+  }
+
+  /** 回收站：清空 */
+  async function emptyTrashAction() {
+    if (!trashed.length) return;
+    if (!window.confirm(`清空回收站？将彻底删除 ${trashed.length} 项，不可恢复（原图不动）。`)) return;
+    const n = await api.emptyTrash();
+    setSel(new Set());
+    await reload();
+    setStatus(`已清空回收站（彻底删除 ${n} 项）`);
+  }
+
+  /** 文件夹实时监听总开关 */
+  async function toggleAutoSyncAction() {
+    const next = !autoSync;
+    setAutoSyncState(next);
+    try {
+      await api.setAutoSync(next);
+      setStatus(next ? "已开启文件夹实时监听" : "已关闭文件夹实时监听");
+    } catch {
+      setAutoSyncState(!next);
+    }
   }
 
   /** 整个文件夹（含所有子文件夹）从库移除（按路径前缀级联，不删原文件） */
@@ -1307,6 +1363,8 @@ function App() {
         return a.missing;
       case "favorite":
         return a.favorite;
+      case "trash":
+        return false; // 回收站走单独列表(trashed)，不在在库 assets 里匹配
       case "type":
         return filter.value === "image"
           ? isImage(a)
@@ -1320,14 +1378,17 @@ function App() {
     a.name.toLowerCase().includes(query.toLowerCase()) ||
     a.tags.some((t) => t.includes(query));
 
-  const filtered = assets.filter((a) => matchesFilter(a) && matchesQuery(a));
+  const inTrash = filter.kind === "trash";
+  const filtered = (inTrash ? trashed : assets).filter(
+    (a) => (inTrash || matchesFilter(a)) && matchesQuery(a),
+  );
   const sorted = [...filtered].sort((a, b) => {
     if (sortKey === "name") return a.name.localeCompare(b.name);
     if (sortKey === "size") return b.sizeBytes - a.sizeBytes;
     return b.addedAt - a.addedAt || b.id - a.id;
   });
   const missingCount = assets.filter((a) => a.missing).length;
-  const displayList: Asset[] = semanticIds
+  const displayList: Asset[] = !inTrash && semanticIds
     ? (semanticIds.map((id) => assets.find((a) => a.id === id)).filter(Boolean) as Asset[])
     : sorted;
   const selected = assets.find((a) => a.id === selectedId) ?? null;
@@ -1491,6 +1552,8 @@ function App() {
       ? `合集：${collections.find((c) => String(c.id) === filter.value)?.name ?? filter.value}`
       : filter.kind === "type"
       ? { image: "图片", video: "视频", audio: "音频" }[filter.value]
+      : filter.kind === "trash"
+      ? "🗑 回收站"
       : `配色：${filter.value}`;
 
   // ===== 菜单 =====
@@ -1578,6 +1641,12 @@ function App() {
     toggleFilter,
     isActive,
     missingCount,
+    trashedCount: trashed.length,
+    autoSync,
+    toggleAutoSync: toggleAutoSyncAction,
+    restoreSelected: restoreSelectedAction,
+    purgeSelected: purgeSelectedAction,
+    emptyTrash: emptyTrashAction,
     findDups,
     folders,
     removeFolder: removeFolderAction,

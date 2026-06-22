@@ -88,6 +88,16 @@ export const importBlob = (name: string, dataB64: string) =>
   invoke<ImportedBlob>("import_blob", { name, dataB64 });
 export const removeAsset = (id: number) => invoke<void>("remove_asset", { id });
 export const removeAssets = (ids: number[]) => invoke<number>("remove_assets", { ids });
+// 回收站：列出 / 恢复 / 彻底删除 / 清空（软删除"移除"进回收站，可恢复；彻底删除不可逆，均不动原图）
+export const listTrashed = () => invoke<Asset[]>("list_trashed");
+export const restoreAssets = (ids: number[]) => invoke<number>("restore_assets", { ids });
+export const purgeAssets = (ids: number[]) => invoke<number>("purge_assets", { ids });
+export const emptyTrash = () => invoke<number>("empty_trash");
+// 文件夹实时监听开关 + 列表
+export const getAutoSync = () => invoke<boolean>("get_auto_sync");
+export const setAutoSync = (on: boolean) => invoke<void>("set_auto_sync", { on });
+export const listWatched = () => invoke<string[]>("list_watched");
+export const unwatchFolder = (root: string) => invoke<void>("unwatch_folder", { root });
 export const removeFolder = (folder: string) => invoke<number>("remove_folder", { folder });
 export const setFavorite = (id: number, fav: boolean) =>
   invoke<void>("set_favorite", { id, fav });

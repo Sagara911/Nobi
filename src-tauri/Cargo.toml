@@ -27,6 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 walkdir = "2"
+notify = "6" # 文件夹实时监听：导入的目录有新文件→自动入库
 imagesize = "0.13"
 image = "0.25"
 reqwest = { version = "0.12", features = ["json"] }
