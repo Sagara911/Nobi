@@ -97,11 +97,13 @@ pub fn build_thumbnails(app: tauri::AppHandle) -> Result<usize, String> {
     };
 
     let total = todo.len();
+    // 进度事件限频：全程最多约 100 次（大库时每 3 张发一次会发上万次，把前端 UI 线程刷爆→未响应）
+    let step = (total / 100).max(1);
     let mut done = 0usize;
     let mut seen = 0usize;
     for (id, path, thumb) in todo {
         seen += 1;
-        if seen % 3 == 0 || seen == total {
+        if seen % step == 0 || seen == total {
             let _ = app.emit(
                 "thumb-progress",
                 serde_json::json!({ "done": seen, "total": total }),

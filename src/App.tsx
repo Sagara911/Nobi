@@ -1163,6 +1163,7 @@ function App() {
       }
       let done = 0;
       let seen = 0;
+      const step = Math.max(1, Math.floor(targets.length / 100)); // 进度限频：大库时别每张都 setState 刷爆 UI
       for (const t of targets) {
         try {
           await api.setClipEmbedding(t.id, await imageVector(convertFileSrc(t.img)));
@@ -1171,9 +1172,10 @@ function App() {
           /* 跳过单张失败 */
         }
         seen++;
-        setProgress({ done: seen, total: targets.length });
-        if (seen % 5 === 0 || seen === targets.length)
+        if (seen % step === 0 || seen === targets.length) {
+          setProgress({ done: seen, total: targets.length });
           setStatus(`建立 CLIP 索引… ${seen}/${targets.length}`);
+        }
       }
       setProgress(null);
       setStatus(`CLIP 索引完成：${done}/${targets.length}`);
