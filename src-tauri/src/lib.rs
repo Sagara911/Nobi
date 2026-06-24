@@ -1418,12 +1418,48 @@ fn open_direct_window(app: &tauri::AppHandle, url: String) -> Result<(), String>
     use tauri::{WebviewUrl, WebviewWindowBuilder};
     let parsed: tauri::Url = url.parse().map_err(|e| format!("网址无效：{e}"))?;
     let label = format!("web-d{}", DIRECT_SEQ.fetch_add(1, Ordering::Relaxed));
+    let app_dl = app.clone(); // 给下载回调用（取「下载」目录）
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
         .title("浏览窗（外部网页）")
         .decorations(false)
         .always_on_top(true)
         .resizable(true)
         .initialization_script(NEWWIN_FIX_JS)
+        // 内置下载：默认存到系统「下载」文件夹，完成后在网页里弹个纯文字小提示。
+        // 这是独立的下载事件回调，不碰窗口样式/隐藏/透明度，现有逻辑零影响。
+        .on_download(move |webview, event| {
+            use tauri::webview::DownloadEvent;
+            use tauri::Manager;
+            match event {
+                DownloadEvent::Requested { destination, .. } => {
+                    // 强制落到「下载」文件夹（保留原文件名）；取不到就用 WebView2 默认路径
+                    if let Some(name) = destination.file_name().map(|n| n.to_os_string()) {
+                        if let Ok(dl) = app_dl.path().download_dir() {
+                            let _ = std::fs::create_dir_all(&dl);
+                            *destination = dl.join(name);
+                        }
+                    }
+                    true // 允许下载
+                }
+                DownloadEvent::Finished { path, success, .. } => {
+                    if success {
+                        let fname = path
+                            .as_ref()
+                            .and_then(|p| p.file_name())
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("文件")
+                            .replace('\\', "\\\\")
+                            .replace('\'', "\\'");
+                        let js = format!(
+                            "(function(){{var d=document.createElement('div');d.textContent='\u{2713} 已下载到「下载」文件夹：{fname}';d.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;background:rgba(20,20,22,.92);color:#fff;font:14px/1.4 system-ui,sans-serif;padding:10px 16px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';document.body.appendChild(d);setTimeout(function(){{d.style.transition='opacity .4s';d.style.opacity='0';setTimeout(function(){{d.remove();}},400);}},3500);}})();"
+                        );
+                        let _ = webview.eval(&js);
+                    }
+                    true
+                }
+                _ => true,
+            }
+        })
         .inner_size(480.0, 320.0);
     if let Some((x, y, w, h)) = load_direct_geom(app) {
         builder = builder.inner_size(w, h).position(x, y);
