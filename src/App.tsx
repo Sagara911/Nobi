@@ -66,6 +66,9 @@ import "./App.css";
 const DOCK_KEY = "nobi-dock-v1";
 const SELECTION_TRANSLATE_LABEL = "selection-translate";
 const SELECTION_TRANSLATE_STORAGE_KEY = "nobi.selectionTranslate.payload";
+const IMPORT_CONFIRM_THRESHOLD = 2000; // 导入超过这么多文件就弹确认
+const EAGER_THUMB_MAX = 800; // 导入数 ≤ 此值才即时全量生成缩略图；更多交给"按需生成"
+const LAZY_THUMB_CONCURRENCY = 3; // 按需生成的并发上限
 
 function App() {
   // ===== 状态 =====
@@ -309,6 +312,51 @@ function App() {
     }
   }, [reload]);
 
+  // 缩略图「按需生成」：网格卡片可见时请求；并发受限的队列，结果批量回填到 assets（thumb+配色）。
+  const thumbDone = useRef<Set<number>>(new Set());
+  const thumbInflight = useRef<Set<number>>(new Set());
+  const thumbQueue = useRef<number[]>([]);
+  const thumbPatches = useRef<Map<number, { thumb: string; colors: string[] }>>(new Map());
+  const pumpThumbs = useCallback(() => {
+    while (thumbInflight.current.size < LAZY_THUMB_CONCURRENCY && thumbQueue.current.length) {
+      const id = thumbQueue.current.shift()!;
+      if (thumbDone.current.has(id) || thumbInflight.current.has(id)) continue;
+      thumbInflight.current.add(id);
+      api
+        .ensureThumb(id)
+        .then((res) => {
+          if (res && res.thumb) thumbPatches.current.set(id, { thumb: res.thumb, colors: res.colors });
+          thumbDone.current.add(id);
+        })
+        .catch(() => {})
+        .finally(() => {
+          thumbInflight.current.delete(id);
+          pumpThumbs();
+        });
+    }
+  }, []);
+  const requestThumb = useCallback(
+    (id: number) => {
+      if (thumbDone.current.has(id) || thumbInflight.current.has(id)) return;
+      thumbQueue.current.push(id);
+      pumpThumbs();
+    },
+    [pumpThumbs],
+  );
+  // 批量回填：每 400ms 把生成好的缩略图/配色一次性 patch 进 assets（避免每张都触发大数组重渲染）
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (thumbPatches.current.size === 0) return;
+      const patches = thumbPatches.current;
+      thumbPatches.current = new Map();
+      setAssets((prev) => prev.map((a) => {
+        const p = patches.get(a.id);
+        return p ? { ...a, thumb: p.thumb, colors: p.colors } : a;
+      }));
+    }, 400);
+    return () => window.clearInterval(t);
+  }, []);
+
   const loadCmds = useCallback(async () => {
     try {
       setCmds(await api.listAiCommands());
@@ -331,7 +379,7 @@ function App() {
       loadCmds();
       loadCollections();
       api.getAutoSync().then(setAutoSyncState).catch(() => {});
-      await buildThumbs();
+      // 不再开局全量生成缩略图（大库会卡死）——改成网格滚到哪生成哪（见 requestThumb）
       // 失效链接检测移到后台跑：不阻塞首屏（大库时逐条 stat 磁盘会卡死），算完再回填 missing 标记
       try {
         const ids = await api.checkMissing();
@@ -748,12 +796,24 @@ function App() {
     try {
       const dir = await open({ directory: true, multiple: false });
       if (!dir || typeof dir !== "string") return;
+      // 导入前先报体量：超大文件夹弹确认，防手滑把几万张整个怼进来
+      const count = await api.countFolderMedia(dir).catch(() => 0);
+      if (
+        count > IMPORT_CONFIRM_THRESHOLD &&
+        !window.confirm(
+          `这个文件夹里有 ${count.toLocaleString()} 个图片/视频/音频文件，确定全部导入吗？\n\n` +
+            `数量较大：缩略图会在你浏览时「按需生成」(不会一次性卡住)，但库会比较大。\n` +
+            `也可以只导其中的子文件夹。`,
+        )
+      )
+        return;
       setBusy(true);
       setStatus("正在扫描…");
       const added = await api.importFolder(dir);
       await reload();
       setStatus(`已导入 ${added} 张新素材`);
-      await buildThumbs();
+      // 小批量直接生成缩略图(快)；大批量交给"按需生成"(滚到哪生成哪)，避免一次性全量卡死
+      if (added > 0 && added <= EAGER_THUMB_MAX) await buildThumbs();
     } catch (e) {
       setStatus(`导入失败：${e}`);
     } finally {
@@ -1650,6 +1710,7 @@ function App() {
     purgeSelected: purgeSelectedAction,
     emptyTrash: emptyTrashAction,
     findDups,
+    requestThumb,
     folders,
     removeFolder: removeFolderAction,
     colorCounts,

@@ -18,6 +18,83 @@ import DocEditor from "./components/DocEditor";
 /** 文件夹列表超过该数量时折叠显示 */
 const FOLDER_CAP = 8;
 
+/** 网格卡片：可见(挂载)即请求按需生成缩略图(图片且还没缩略图时)；其余沿用原渲染。 */
+function GridCard({
+  a,
+  d,
+  requestThumb,
+}: {
+  a: Asset;
+  d: DockState;
+  requestThumb: (id: number) => void;
+}) {
+  useEffect(() => {
+    if (!a.thumb && !isVideo(a) && !isAudio(a) && !isModel(a)) requestThumb(a.id);
+  }, [a.id, a.thumb, requestThumb]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div
+      className={
+        "card" + (a.id === d.selectedId ? " selected" : "") + (d.sel.has(a.id) ? " multi" : "")
+      }
+      onClick={(e) => d.onCardClick(e, a.id)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        d.openViewer(a.id);
+      }}
+      onContextMenu={(e) => d.openCtxMenu(e, a)}
+    >
+      <div className="thumb">
+        {a.missing && <span className="badge-missing">⚠ 失效</span>}
+        <button
+          className={"fav-btn" + (a.favorite ? " on" : "")}
+          title={a.favorite ? "取消收藏" : "收藏"}
+          onClick={(e) => {
+            e.stopPropagation();
+            d.toggleFavorite(a.id, !a.favorite);
+          }}
+        >
+          ★
+        </button>
+        {isVideo(a) ? (
+          <>
+            <span className="badge-video">▶</span>
+            <video src={convertFileSrc(a.path)} preload="metadata" muted />
+          </>
+        ) : isAudio(a) ? (
+          <div className="thumb-audio">
+            <span className="badge-video">♪</span>
+            <span className="thumb-audio-icon">♪</span>
+            <span className="thumb-audio-fmt">{a.format}</span>
+          </div>
+        ) : isModel(a) ? (
+          a.thumb ? (
+            <>
+              <span className="badge-video badge-3d">3D</span>
+              <img src={convertFileSrc(a.thumb)} loading="lazy" alt={a.name} />
+            </>
+          ) : (
+            <div className="thumb-audio">
+              <span className="badge-video badge-3d">3D</span>
+              <span className="thumb-audio-icon">◆</span>
+              <span className="thumb-audio-fmt">{a.format} · 双击查看生成封面</span>
+            </div>
+          )
+        ) : (
+          <img src={convertFileSrc(a.thumb || a.path)} loading="lazy" alt={a.name} />
+        )}
+      </div>
+      <div className="meta">
+        <div className="name" title={a.name}>
+          {a.name}
+        </div>
+        <div className="sub">
+          {a.format} · {a.width}×{a.height}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export interface DockState {
   assets: Asset[];
   filter: Filter;
@@ -32,6 +109,7 @@ export interface DockState {
   purgeSelected: () => void; // 回收站：彻底删除选中
   emptyTrash: () => void; // 回收站：清空
   findDups: () => void;
+  requestThumb: (id: number) => void; // 卡片可见时请求按需生成缩略图
   folders: FolderNode[]; // 文件夹目录树（根节点数组）
   removeFolder: (dirPath: string) => void;
   colorCounts: Map<string, number>;
@@ -490,70 +568,7 @@ function GridPanel(p: IDockviewPanelProps) {
           itemContent={(i) => {
             const a = d.displayList[i];
             if (!a) return null;
-            return (
-              <div
-                className={
-                  "card" +
-                  (a.id === d.selectedId ? " selected" : "") +
-                  (d.sel.has(a.id) ? " multi" : "")
-                }
-                onClick={(e) => d.onCardClick(e, a.id)}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  d.openViewer(a.id);
-                }}
-                onContextMenu={(e) => d.openCtxMenu(e, a)}
-              >
-                <div className="thumb">
-                  {a.missing && <span className="badge-missing">⚠ 失效</span>}
-                  <button
-                    className={"fav-btn" + (a.favorite ? " on" : "")}
-                    title={a.favorite ? "取消收藏" : "收藏"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      d.toggleFavorite(a.id, !a.favorite);
-                    }}
-                  >
-                    ★
-                  </button>
-                  {isVideo(a) ? (
-                    <>
-                      <span className="badge-video">▶</span>
-                      <video src={convertFileSrc(a.path)} preload="metadata" muted />
-                    </>
-                  ) : isAudio(a) ? (
-                    <div className="thumb-audio">
-                      <span className="badge-video">♪</span>
-                      <span className="thumb-audio-icon">♪</span>
-                      <span className="thumb-audio-fmt">{a.format}</span>
-                    </div>
-                  ) : isModel(a) ? (
-                    a.thumb ? (
-                      <>
-                        <span className="badge-video badge-3d">3D</span>
-                        <img src={convertFileSrc(a.thumb)} loading="lazy" alt={a.name} />
-                      </>
-                    ) : (
-                      <div className="thumb-audio">
-                        <span className="badge-video badge-3d">3D</span>
-                        <span className="thumb-audio-icon">◆</span>
-                        <span className="thumb-audio-fmt">{a.format} · 双击查看生成封面</span>
-                      </div>
-                    )
-                  ) : (
-                    <img src={convertFileSrc(a.thumb || a.path)} loading="lazy" alt={a.name} />
-                  )}
-                </div>
-                <div className="meta">
-                  <div className="name" title={a.name}>
-                    {a.name}
-                  </div>
-                  <div className="sub">
-                    {a.format} · {a.width}×{a.height}
-                  </div>
-                </div>
-              </div>
-            );
+            return <GridCard a={a} d={d} requestThumb={d.requestThumb} />;
           }}
         />
       )}

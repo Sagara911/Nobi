@@ -77,6 +77,11 @@ export const listAssets = () => invoke<Asset[]>("list_assets");
 // 失效链接检测：移出加载热路径，前端进入后台单独跑（大库时逐条 stat 会卡死首屏）
 export const checkMissing = () => invoke<number[]>("check_missing");
 export const importFolder = (path: string) => invoke<number>("import_folder", { path });
+// 导入前数一下文件夹里多少媒体文件（给体量确认用，不入库）
+export const countFolderMedia = (path: string) => invoke<number>("count_folder_media", { path });
+// 按需生成单张缩略图+配色（网格卡片可见时调）
+export interface ThumbOut { thumb: string; colors: string[] }
+export const ensureThumb = (id: number) => invoke<ThumbOut>("ensure_thumb", { id });
 export const importPaths = (paths: string[]) => invoke<number>("import_paths", { paths });
 export interface ImportedBlob {
   path: string;

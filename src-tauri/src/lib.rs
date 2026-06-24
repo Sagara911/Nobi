@@ -2041,6 +2041,7 @@ pub fn run() {
             library::import_folder,
             library::import_paths,
             library::import_blob,
+            library::count_folder_media,
             library::list_assets,
             library::check_missing,
             library::clear_assets,
@@ -2061,6 +2062,7 @@ pub fn run() {
             library::export_metadata,
             // thumbs
             thumbs::build_thumbnails,
+            thumbs::ensure_thumb,
             thumbs::set_thumb,
             // ai
             ai::ai_run,

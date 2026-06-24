@@ -89,6 +89,31 @@ pub fn import_folder(app: tauri::AppHandle, path: String) -> Result<usize, Strin
     Ok(n)
 }
 
+/// 快速数一个文件夹里有多少图片/视频/音频文件（不入库）——导入前给用户体量提示用。
+#[tauri::command]
+pub fn count_folder_media(path: String) -> usize {
+    let mut n = 0usize;
+    for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let ext = entry
+            .path()
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_default();
+        if IMAGE_EXTS.contains(&ext.as_str())
+            || VIDEO_EXTS.contains(&ext.as_str())
+            || AUDIO_EXTS.contains(&ext.as_str())
+            || (ENABLE_3D && MODEL_EXTS.contains(&ext.as_str()))
+        {
+            n += 1;
+        }
+    }
+    n
+}
+
 /// 导入多个路径（拖拽进来的文件/文件夹）。返回新增数量。
 #[tauri::command]
 pub fn import_paths(app: tauri::AppHandle, paths: Vec<String>) -> Result<usize, String> {

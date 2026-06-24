@@ -138,6 +138,58 @@ pub fn build_thumbnails(app: tauri::AppHandle) -> Result<usize, String> {
     Ok(done)
 }
 
+#[derive(serde::Serialize)]
+pub struct ThumbOut {
+    pub thumb: String,
+    pub colors: Vec<String>,
+}
+
+/// 按需生成单张缩略图 + 配色（网格卡片可见时调用）。已有则直接返回，避免重复解码。
+/// 不发进度事件、单张处理——这是"滚到哪生成哪"的核心，替代开局/导入时的全量生成。
+#[tauri::command]
+pub fn ensure_thumb(app: tauri::AppHandle, id: i64) -> Result<ThumbOut, String> {
+    let dir = thumbs_dir(&app)?;
+    let conn = open_db(&app)?;
+    let (path, thumb, colors_json): (String, String, String) = conn
+        .query_row(
+            "SELECT path, COALESCE(thumb,''), COALESCE(colors,'') FROM assets WHERE id=?1",
+            rusqlite::params![id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    // 已有缩略图 + 配色：直接返回，不重复解码
+    if !thumb.is_empty() && !colors_json.is_empty() && std::path::Path::new(&thumb).exists() {
+        let colors: Vec<String> = serde_json::from_str(&colors_json).unwrap_or_default();
+        return Ok(ThumbOut { thumb, colors });
+    }
+    let mut thumb_str = thumb.clone();
+    let work: Option<image::DynamicImage> = if !thumb.is_empty() && std::path::Path::new(&thumb).exists() {
+        image::open(&thumb).ok()
+    } else if let Ok(img) = image::open(&path) {
+        let t = img.thumbnail(400, 400);
+        let tp = dir.join(format!("{id}.png"));
+        if t.save(&tp).is_ok() {
+            thumb_str = tp.to_string_lossy().to_string();
+        }
+        Some(t)
+    } else {
+        None
+    };
+    let colors = match work {
+        Some(im) => dominant_colors(&im),
+        None => Vec::new(),
+    };
+    let cj = serde_json::to_string(&colors).unwrap_or_else(|_| "[]".to_string());
+    let _ = conn.execute(
+        "UPDATE assets SET thumb=?1, colors=?2 WHERE id=?3",
+        rusqlite::params![thumb_str, cj, id],
+    );
+    Ok(ThumbOut {
+        thumb: thumb_str,
+        colors,
+    })
+}
+
 /// 前端渲染的封面写回（3D 模型查看器首帧等）：
 /// 收 PNG base64 → 缩到 400px 存缓存目录 → 顺带提主色，更新 thumb+colors。
 #[tauri::command]
