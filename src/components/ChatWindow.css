@@ -336,6 +336,41 @@
   max-height: 220px;
   border-radius: 8px;
   display: block;
+  cursor: zoom-in;
+}
+/* 大图浮层：窗口内看大图（聊天窗是 WebView，开新窗会被吞，故走浮层） */
+.chat-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+.chat-lightbox img {
+  max-width: 94vw;
+  max-height: 94vh;
+  object-fit: contain;
+  border-radius: 6px;
+  cursor: default;
+}
+.chat-lightbox-x {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+.chat-lightbox-x:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 .chat-img + .chat-text {
   margin-top: 6px;

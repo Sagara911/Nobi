@@ -215,8 +215,19 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   const [notice, setNotice] = useState("");
   const [dragging, setDragging] = useState(false);
   const [panel, setPanel] = useState<null | "emoji" | "sticker">(null);
+  const [lightbox, setLightbox] = useState<string | null>(null); // 点开聊天图片看大图（窗口内浮层，不开新窗）
   const [stickers, setStickers] = useState<Sticker[]>(() => getStickers());
   const [mentionQ, setMentionQ] = useState<string | null>(null); // 正在输入的 @查询(null=没在@)
+
+  // 大图浮层：Esc 关闭（点浮层任意处也关）
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   // @候选：按"人"(clientId)去重，每人只取其最新用过的名字——避免某人改名后
   // 历史里堆一堆旧名字。排除自己 + 加「所有人」。
@@ -766,9 +777,13 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
                   style={m.bubble ? { background: m.bubble, color: readableText(m.bubble) } : undefined}
                 >
                   {m.kind === "image" && m.assetUrl ? (
-                    <a href={m.assetUrl} target="_blank" rel="noreferrer">
-                      <img className="chat-img" src={m.assetUrl} alt={m.assetName || "图片"} />
-                    </a>
+                    <img
+                      className="chat-img"
+                      src={m.assetUrl}
+                      alt={m.assetName || "图片"}
+                      title="点击看大图"
+                      onClick={() => setLightbox(m.assetUrl!)}
+                    />
                   ) : null}
                   {m.kind === "video" && m.assetUrl ? (
                     <video className="chat-video" src={m.assetUrl} controls preload="metadata" />
@@ -781,6 +796,13 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
           );
         })}
       </div>
+
+      {lightbox && (
+        <div className="chat-lightbox" onClick={() => setLightbox(null)} title="点任意处关闭">
+          <img src={lightbox} alt="大图" onClick={(e) => e.stopPropagation()} />
+          <button className="chat-lightbox-x" onClick={() => setLightbox(null)}>✕</button>
+        </div>
+      )}
 
       {panel && (
         <div className="chat-panel">
