@@ -1,12 +1,22 @@
 // Dock 工作区面板（PS 式可拖拽）。
 // 面板通过 DockCtx 取 App 的状态与动作 —— 面板只负责展示与转发交互，不写业务逻辑。
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { VirtuosoGrid } from "react-virtuoso";
 import type { IDockviewPanelProps } from "dockview";
 
-import type { AiCmd, Asset, Collection, Filter, FolderNode, SortKey } from "./types";
+import type {
+  AiCmd,
+  Asset,
+  Collection,
+  Cond,
+  Filter,
+  FolderNode,
+  Scope,
+  SmartFolder,
+  SortKey,
+} from "./types";
 import { isAudio, isModel, isVideo } from "./utils";
 import Inspector from "./components/Inspector";
 import TagTree from "./components/TagTree";
@@ -36,6 +46,12 @@ function GridCard({
       className={
         "card" + (a.id === d.selectedId ? " selected" : "") + (d.sel.has(a.id) ? " multi" : "")
       }
+      draggable={!a.missing}
+      onDragStart={(e) => {
+        // 接管为原生 OLE 拖放（拖到 PS/资源管理器等）：先取消 webview 自带的 HTML5 拖拽
+        e.preventDefault();
+        d.dragOut(a);
+      }}
       onClick={(e) => d.onCardClick(e, a.id)}
       onDoubleClick={(e) => {
         e.stopPropagation();
@@ -97,10 +113,18 @@ function GridCard({
 
 export interface DockState {
   assets: Asset[];
-  filter: Filter;
+  scope: Scope; // 当前作用域（互斥基础集合）
+  conds: Cond[]; // 叠加的细化条件（组合筛选）
   setFilter: (f: Filter) => void;
-  toggleFilter: (f: Filter) => void; // 再点已激活的=取消回全部
+  toggleFilter: (f: Filter) => void; // 作用域类=切换；条件类=加/减叠加
   isActive: (f: Filter) => boolean;
+  condLabel: (c: Cond) => string;
+  removeCond: (c: Cond) => void;
+  clearConds: () => void;
+  smartFolders: SmartFolder[];
+  saveSmartFolder: () => void;
+  applySmartFolder: (sf: SmartFolder) => void;
+  deleteSmartFolder: (id: string) => void;
   missingCount: number;
   trashedCount: number; // 回收站项数
   autoSync: boolean; // 文件夹实时监听开关
@@ -135,6 +159,7 @@ export interface DockState {
   onCardClick: (e: React.MouseEvent, id: number) => void;
   openViewer: (id: number) => void;
   openCtxMenu: (e: React.MouseEvent, a: Asset) => void;
+  dragOut: (a: Asset) => void; // 拖出到外部应用（PS/资源管理器等）
   toggleFavorite: (id: number, fav: boolean) => void;
   selected: Asset | null;
   addTag: (id: number, tag: string) => void;
@@ -195,6 +220,12 @@ function LibraryPanel(_p: IDockviewPanelProps) {
   const hiddenFolders = d.folders.length - folderList.length;
   const tagList = allTags ? d.tags : d.tags.filter(([, c]) => c >= 2);
   const hiddenTags = d.tags.length - tagList.length;
+  // 属性筛选：库里出现过的图片格式（视频/音频不算）
+  const imgFormats = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of d.assets) if (a.format && !isVideo(a) && !isAudio(a) && !isModel(a)) s.add(a.format);
+    return Array.from(s).sort();
+  }, [d.assets]);
 
   return (
     <aside className="sidebar">
@@ -264,6 +295,31 @@ function LibraryPanel(_p: IDockviewPanelProps) {
         )}
       </Section>
 
+      {d.smartFolders.length > 0 && (
+        <Section k="side-smart-folders" title={`智能文件夹 · ${d.smartFolders.length}`}>
+          {d.smartFolders.map((sf) => (
+            <div
+              key={sf.id}
+              className="nav-item"
+              title={`${sf.name}（存下来的筛选条件，内容随库自动更新）`}
+              onClick={() => d.applySmartFolder(sf)}
+            >
+              <span className="ellip">🔎 {sf.name}</span>
+              <button
+                className="folder-del"
+                title="删除这个智能文件夹（不删素材）"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  d.deleteSmartFolder(sf.id);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </Section>
+      )}
+
       {d.collections.length > 0 && (
         <Section k="side-collections" title={`合集 · ${d.collections.length}`}>
           {d.collections.map((c) => (
@@ -320,7 +376,7 @@ function LibraryPanel(_p: IDockviewPanelProps) {
         <Section k="side-tags" title={`标签 · ${d.tags.length}`} defaultOpen={false}>
           <TagTree
             tags={tagList}
-            activeValue={d.filter.kind === "tag" ? d.filter.value : null}
+            isActive={(v) => d.isActive({ kind: "tag", value: v })}
             onPick={(v) => d.toggleFilter({ kind: "tag", value: v })}
           />
           {hiddenTags > 0 && (
@@ -335,6 +391,40 @@ function LibraryPanel(_p: IDockviewPanelProps) {
           )}
         </Section>
       )}
+
+      <Section k="side-attrs" title="属性筛选" defaultOpen={false}>
+        <div className="side-chips">
+          {([
+            ["land", "横图"],
+            ["port", "竖图"],
+            ["square", "方图"],
+          ] as const).map(([v, label]) => (
+            <button
+              key={v}
+              className={"side-chip" + (d.isActive({ kind: "orient", value: v }) ? " active" : "")}
+              onClick={() => d.toggleFilter({ kind: "orient", value: v })}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            className={"side-chip" + (d.isActive({ kind: "big" }) ? " active" : "")}
+            onClick={() => d.toggleFilter({ kind: "big" })}
+            title="长边 ≥ 2000px"
+          >
+            大图
+          </button>
+          {imgFormats.map((fmt) => (
+            <button
+              key={fmt}
+              className={"side-chip" + (d.isActive({ kind: "format", value: fmt }) ? " active" : "")}
+              onClick={() => d.toggleFilter({ kind: "format", value: fmt })}
+            >
+              {fmt}
+            </button>
+          ))}
+        </div>
+      </Section>
     </aside>
   );
 }
@@ -416,6 +506,31 @@ function GridPanel(p: IDockviewPanelProps) {
           </label>
         </div>
       </div>
+      {d.conds.length > 0 && (
+        <div className="cond-bar">
+          <span className="cond-bar-label">叠加筛选(且):</span>
+          {d.conds.map((c, i) => (
+            <button
+              key={i}
+              className="cond-chip"
+              title="点掉这个条件"
+              onClick={() => d.removeCond(c)}
+            >
+              {d.condLabel(c)} <span className="cond-x">✕</span>
+            </button>
+          ))}
+          <button className="cond-link" onClick={d.clearConds} title="清空所有条件">
+            清空
+          </button>
+          <button
+            className="cond-link save"
+            onClick={d.saveSmartFolder}
+            title="把当前这组条件存成侧栏的智能文件夹（内容随库自动更新）"
+          >
+            ＋存为智能文件夹
+          </button>
+        </div>
+      )}
       {d.progress && d.progress.total > 0 && (
         <div className="prog-wrap" title={`处理中 ${d.progress.done}/${d.progress.total}`}>
           <div
@@ -434,7 +549,7 @@ function GridPanel(p: IDockviewPanelProps) {
               退出
             </button>
           )}
-          {d.filter.kind === "collection" && d.displayList.length > 0 && (
+          {d.scope.kind === "collection" && d.displayList.length > 0 && (
             <button
               className="btn link"
               onClick={() => d.exportContactSheet(d.displayList, d.filterLabel)}

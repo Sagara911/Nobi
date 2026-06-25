@@ -1016,3 +1016,57 @@ textarea.cfg-input { resize: vertical; font-family: inherit; line-height: 1.5; }
   color: var(--text-1);
   background: var(--surface);
 }
+
+/* 组合筛选条件栏（GridPanel 搜索框下方）：当前叠加的细化条件 + 存为智能文件夹 */
+.cond-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.cond-bar-label {
+  color: var(--text-2);
+  font-size: 11px;
+  margin-right: 2px;
+}
+.cond-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-1);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 11px;
+  cursor: pointer;
+}
+.cond-chip:hover {
+  background: var(--accent);
+  color: #1a1a1a;
+}
+.cond-chip .cond-x {
+  font-size: 9px;
+  opacity: 0.7;
+}
+.cond-link {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.cond-link:hover {
+  color: var(--text-1);
+}
+.cond-link.save {
+  color: var(--accent);
+  margin-left: auto;
+}
+.cond-link.save:hover {
+  text-decoration: underline;
+}

@@ -5,6 +5,7 @@
 // ============================================================
 
 import { invoke } from "@tauri-apps/api/core";
+import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import {
   enable as autostartEnable,
   disable as autostartDisable,
@@ -107,10 +108,24 @@ export const removeFolder = (folder: string) => invoke<number>("remove_folder", 
 export const setFavorite = (id: number, fav: boolean) =>
   invoke<void>("set_favorite", { id, fav });
 export const setTags = (id: number, tags: string[]) => invoke<void>("set_tags", { id, tags });
+export const renameTag = (from: string, to: string) =>
+  invoke<number>("rename_tag", { from, to });
+export const deleteTag = (name: string) => invoke<number>("delete_tag", { name });
 export const addTagBulk = (ids: number[], tag: string) =>
   invoke<void>("add_tag_bulk", { ids, tag });
 export const exportMetadata = (path: string, format: string) =>
   invoke<number>("export_metadata", { path, format });
+
+// ===== 库备份 / 迁移（数据库 + 缩略图整包，不含原图）=====
+export const exportLibrary = (destDir: string) =>
+  invoke<string>("export_library", { destDir });
+export const importLibrary = (srcDir: string) =>
+  invoke<string>("import_library", { srcDir });
+
+// ===== 拖出到外部应用（PS / 资源管理器等）=====
+// item = 要拖的原文件绝对路径数组；icon = 拖动时跟随光标的预览图（缩略图优先，回退原图）。
+export const dragOutFiles = (paths: string[], icon: string) =>
+  startDrag({ item: paths, icon, mode: "copy" });
 
 // ---- 缩略图 ----
 export const buildThumbnails = () => invoke<number>("build_thumbnails");

@@ -18,6 +18,28 @@ export const ENABLE_3D = false;
 const MODEL_FORMATS = new Set(["GLB", "GLTF", "OBJ", "FBX", "STL"]);
 export const isModel = (a: Asset) => ENABLE_3D && MODEL_FORMATS.has(a.format);
 
+/** 把图片(经 convertFileSrc 的 src)以位图写入系统剪贴板，可直接 Ctrl+V 粘到 PS/聊天/文档。
+ *  浏览器剪贴板只接受 PNG，故统一经 canvas 转 PNG。 */
+export async function copyImageToClipboard(src: string): Promise<void> {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("图片加载失败"));
+    img.src = src;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 不可用");
+  ctx.drawImage(img, 0, 0);
+  const blob: Blob = await new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("导出 PNG 失败"))), "image/png"),
+  );
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+}
+
 /** 普通图片（非视频/音频/3D）：AI 打标、CLIP 找相似、画板、悬浮参考等图像能力只对它开放 */
 export const isImage = (a: Asset) => !isVideo(a) && !isAudio(a) && !isModel(a);
 

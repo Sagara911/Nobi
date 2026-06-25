@@ -434,6 +434,76 @@ pub fn add_tag_bulk(app: tauri::AppHandle, ids: Vec<i64>, tag: String) -> Result
     Ok(())
 }
 
+/// 全库标签改写工具：对每条素材的 tags 应用 f，去重后写回。返回被改动的素材数。
+fn rewrite_tags_all(
+    app: &tauri::AppHandle,
+    f: impl Fn(&str) -> Option<String>,
+) -> Result<usize, String> {
+    let conn = open_db(app)?;
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT id, COALESCE(tags,'[]') FROM assets")
+            .map_err(|e| e.to_string())?;
+        let it = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        it.filter_map(|r| r.ok()).collect()
+    };
+    let mut changed = 0usize;
+    for (id, tj) in rows {
+        let tags: Vec<String> = serde_json::from_str(&tj).unwrap_or_default();
+        let mut next: Vec<String> = Vec::with_capacity(tags.len());
+        let mut touched = false;
+        for t in &tags {
+            match f(t) {
+                Some(nt) => {
+                    if nt != *t {
+                        touched = true;
+                    }
+                    if !nt.is_empty() && !next.contains(&nt) {
+                        next.push(nt);
+                    }
+                }
+                None => {
+                    touched = true; // 该标签被删除
+                }
+            }
+        }
+        if touched {
+            let cj = serde_json::to_string(&next).unwrap_or_else(|_| "[]".to_string());
+            let _ = conn.execute(
+                "UPDATE assets SET tags=?1 WHERE id=?2",
+                rusqlite::params![cj, id],
+            );
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+/// 全库重命名标签（from→to）。to 已存在即等于「合并」（去重）。返回改动的素材数。
+#[tauri::command]
+pub fn rename_tag(app: tauri::AppHandle, from: String, to: String) -> Result<usize, String> {
+    let from = from.trim().to_string();
+    let to = to.trim().to_string();
+    if from.is_empty() || to.is_empty() {
+        return Err("标签名不能为空".into());
+    }
+    rewrite_tags_all(&app, |t| {
+        Some(if t == from { to.clone() } else { t.to_string() })
+    })
+}
+
+/// 全库删除某标签。返回改动的素材数。
+#[tauri::command]
+pub fn delete_tag(app: tauri::AppHandle, name: String) -> Result<usize, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("标签名不能为空".into());
+    }
+    rewrite_tags_all(&app, |t| if t == name { None } else { Some(t.to_string()) })
+}
+
 fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') {
         format!("\"{}\"", s.replace('"', "\"\""))

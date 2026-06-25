@@ -11,6 +11,7 @@
 //! - collect   浏览器采集（本地 HTTP 服务 + 扩展导出）
 
 mod ai;
+mod backup;
 mod board;
 mod collect;
 mod collections;
@@ -1595,6 +1596,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // 素材拖出到外部应用（PS/资源管理器等）——原生 OLE 拖放，与 WebView2 合成层无关
+        .plugin(tauri_plugin_drag::init())
         .manage(watch::WatchState(std::sync::Mutex::new(None)))
         .setup(|app| {
             collect::start_collect_server(app.handle().clone());
@@ -2095,7 +2098,12 @@ pub fn run() {
             library::set_favorite,
             library::set_tags,
             library::add_tag_bulk,
+            library::rename_tag,
+            library::delete_tag,
             library::export_metadata,
+            // backup（库备份 / 迁移：数据库 + 缩略图整包导出 / 恢复）
+            backup::export_library,
+            backup::import_library,
             // thumbs
             thumbs::build_thumbnails,
             thumbs::ensure_thumb,

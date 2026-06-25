@@ -28,7 +28,36 @@ export type Filter =
   | { kind: "missing" }
   | { kind: "favorite" }
   | { kind: "trash" } // 回收站（软删除的素材）
-  | { kind: "type"; value: "image" | "video" | "audio" };
+  | { kind: "type"; value: "image" | "video" | "audio" }
+  | { kind: "format"; value: string }
+  | { kind: "orient"; value: "land" | "port" | "square" }
+  | { kind: "big" };
+
+/** 作用域：互斥的「基础集合」，一次只能选一个 */
+export type Scope =
+  | { kind: "all" }
+  | { kind: "missing" }
+  | { kind: "trash" }
+  | { kind: "collection"; value: string };
+
+/** 细化条件：在作用域内 AND 叠加，可同时存在多个（= 组合筛选） */
+export type Cond =
+  | { kind: "tag"; value: string }
+  | { kind: "folder"; value: string }
+  | { kind: "color"; value: string }
+  | { kind: "favorite" }
+  | { kind: "type"; value: "image" | "video" | "audio" }
+  | { kind: "format"; value: string } // 文件格式（PNG/JPG…，不分大小写）
+  | { kind: "orient"; value: "land" | "port" | "square" } // 横/竖/方
+  | { kind: "big" }; // 大图：长边 ≥ 2000px
+
+/** 智能文件夹 = 存下来的一组「作用域 + 条件」，内容随库动态变化 */
+export interface SmartFolder {
+  id: string;
+  name: string;
+  scope: Scope;
+  conds: Cond[];
+}
 
 export interface Collection {
   id: number;

@@ -18,6 +18,7 @@
     "opener:allow-open-path",
     "opener:allow-reveal-item-in-dir",
     "dialog:default",
+    "drag:allow-start-drag",
     "updater:default",
     "process:allow-restart",
     "autostart:allow-enable",

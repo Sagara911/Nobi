@@ -25,13 +25,25 @@ import type {
   AiCmd,
   Asset,
   Collection,
+  Cond,
   Filter,
   FolderNode,
   Menu,
+  Scope,
+  SmartFolder,
   SelectionTranslatePayload,
   SortKey,
 } from "./types";
-import { DOBBY_URL, REPO_URL, isAudio, isImage, isModel, isVideo, primaryBucket } from "./utils";
+import {
+  DOBBY_URL,
+  REPO_URL,
+  copyImageToClipboard,
+  isAudio,
+  isImage,
+  isModel,
+  isVideo,
+  primaryBucket,
+} from "./utils";
 import * as api from "./api";
 import { imageVector, textVector } from "./clip";
 import { addImages, type BoardEditor, type BoardImage } from "./Board";
@@ -43,6 +55,7 @@ import WebTVModal from "./components/WebTVModal";
 import TranslationModal from "./components/TranslationModal";
 import PreferencesModal from "./components/PreferencesModal";
 import SavePathModal from "./components/SavePathModal";
+import TagManagerModal from "./components/TagManagerModal";
 import UpdateModal from "./components/UpdateModal";
 import ImageViewer from "./components/ImageViewer";
 import { buildContactSheetPdf, bytesToB64 } from "./contactSheet";
@@ -78,7 +91,20 @@ function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>({ kind: "all" });
+  // 筛选 = 作用域(互斥) + 条件数组(AND 叠加，即组合筛选)
+  const [scope, setScope] = useState<Scope>({ kind: "all" });
+  const [conds, setConds] = useState<Cond[]>([]);
+  // 智能文件夹：存下来的「作用域+条件」组合，按机器存 localStorage（不随库备份迁移）
+  const [smartFolders, setSmartFolders] = useState<SmartFolder[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("nobi-smart-folders-v1") || "[]") as SmartFolder[];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem("nobi-smart-folders-v1", JSON.stringify(smartFolders));
+  }, [smartFolders]);
   const [busy, setBusy] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
   const updateRef = useRef<Update | null>(null);
@@ -128,6 +154,7 @@ function App() {
   const [showTranslation, setShowTranslation] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false); // 首选项·快捷键
   const [showSavePath, setShowSavePath] = useState(false); // 素材保存路径
+  const [showTagMgr, setShowTagMgr] = useState(false); // 标签管理
   // 看球搜索引擎（Alt+E 换台与入口弹窗共用）；前端存 localStorage，Rust 侧由命令同步持久化
   const [webEngine, setWebEngine] = useState(() => {
     try {
@@ -839,6 +866,96 @@ function App() {
     }
   }
 
+  // 库备份：选一个目标文件夹 → 把数据库+缩略图整包拷进去（含标签/收藏/合集/CLIP 索引）
+  async function handleBackup() {
+    try {
+      const dir = await open({
+        directory: true,
+        title: "选择备份到哪个文件夹",
+      });
+      if (!dir || typeof dir !== "string") return;
+      setBusy(true);
+      setStatus("备份中…（拷贝数据库与缩略图）");
+      const msg = await api.exportLibrary(dir);
+      setStatus(msg);
+    } catch (e) {
+      setStatus(`备份失败：${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 库恢复：选一个备份文件夹 → 覆盖当前库（原库自动留底），完成后刷新
+  async function handleRestore() {
+    if (
+      !window.confirm(
+        "从备份恢复会覆盖当前库（标签/收藏/合集等都会被备份里的内容替换）。\n" +
+          "当前库会自动留一份底（nobi.sqlite.bak-…）。\n\n确定继续吗？",
+      )
+    )
+      return;
+    try {
+      const dir = await open({
+        directory: true,
+        title: "选择备份文件夹（含 nobi.sqlite）",
+      });
+      if (!dir || typeof dir !== "string") return;
+      setBusy(true);
+      setStatus("恢复中…");
+      const msg = await api.importLibrary(dir);
+      await reload();
+      setStatus(`${msg}。已刷新；若有异常重启 Nobi 即可。`);
+    } catch (e) {
+      setStatus(`恢复失败：${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 拖出到外部应用（PS / 资源管理器等）：拖单张就一张，拖的是多选之一就整批拖。
+  function dragOut(a: Asset) {
+    const batch =
+      sel.has(a.id) && sel.size > 1 ? assets.filter((x) => sel.has(x.id)) : [a];
+    const paths = batch.filter((x) => !x.missing).map((x) => x.path);
+    if (!paths.length) {
+      setStatus("拖出失败：文件已失效");
+      return;
+    }
+    // startDrag 是同步接管的原生拖放；icon 用缩略图（无则原图）
+    void api.dragOutFiles(paths, a.thumb || a.path).catch((e) => setStatus(`拖出失败：${e}`));
+  }
+
+  // 复制图片本身到剪贴板（位图），可直接 Ctrl+V 粘进 PS/聊天/文档
+  async function copyImageAction(a: Asset) {
+    try {
+      setStatus("复制图片中…");
+      await copyImageToClipboard(convertFileSrc(a.path));
+      setStatus("已复制图片到剪贴板（Ctrl+V 粘贴）");
+    } catch (e) {
+      setStatus(`复制图片失败：${e}（试试「复制路径」）`);
+    }
+  }
+
+  // 标签管理：全库重命名 / 删除标签后刷新（tags 会随 assets 重算）
+  async function renameTagAction(from: string, to: string) {
+    try {
+      const n = await api.renameTag(from, to);
+      await reload();
+      setStatus(`已把标签「${from}」改为「${to}」（影响 ${n} 张）`);
+    } catch (e) {
+      setStatus(`重命名标签失败：${e}`);
+    }
+  }
+  async function deleteTagAction(name: string) {
+    try {
+      const n = await api.deleteTag(name);
+      await reload();
+      setStatus(`已删除标签「${name}」（影响 ${n} 张）`);
+    } catch (e) {
+      setStatus(`删除标签失败：${e}`);
+    }
+  }
+
   async function removeAssetAction(id: number) {
     await api.removeAsset(id);
     if (selectedId === id) setSelectedId(null);
@@ -905,9 +1022,12 @@ function App() {
     const ids = assets.filter((a) => isUnder(a.path, dirPath)).map((a) => a.id);
     if (!ids.length) return;
     const n = await api.removeAssets(ids);
-    // 当前正看的文件夹若被这次级联删掉，回到「全部」
-    if (filter.kind === "folder" && (filter.value === dirPath || isUnder(filter.value, dirPath)))
-      setFilter({ kind: "all" });
+    // 若有「文件夹」条件指向被级联删掉的目录，撤掉这些条件
+    setConds((prev) =>
+      prev.filter(
+        (c) => !(c.kind === "folder" && (c.value === dirPath || isUnder(c.value, dirPath))),
+      ),
+    );
     setSel(new Set());
     setSelectedId(null);
     await reload();
@@ -1154,7 +1274,7 @@ function App() {
     try {
       const n = await api.addToCollection(id, ids);
       await loadCollections();
-      if (filter.kind === "collection" && filter.value === String(id)) openCollection(id);
+      if (scope.kind === "collection" && scope.value === String(id)) openCollection(id);
       setStatus(`已加入合集：新增 ${n} 张`);
     } catch (e) {
       setStatus(`加入合集失败：${e}`);
@@ -1202,7 +1322,7 @@ function App() {
     try {
       await api.deleteCollection(id);
       await loadCollections();
-      if (filter.kind === "collection" && filter.value === String(id)) {
+      if (scope.kind === "collection" && scope.value === String(id)) {
         setFilter({ kind: "all" });
         setCollectionMembers(new Set());
       }
@@ -1212,7 +1332,42 @@ function App() {
     }
   }
 
+  // 自动后台建索引：导入后/启动后悄悄把缺 CLIP 向量的图补上，期间不占 busy、不打断操作。
+  // 与手动 buildIndex 共用 indexingRef 防并发重复计算。
+  const indexingRef = useRef(false);
+  const autoBuildIndex = useCallback(async () => {
+    if (indexingRef.current) return;
+    indexingRef.current = true;
+    try {
+      const targets = await api.clipTargets();
+      if (!targets.length) return;
+      setStatus(
+        `后台建立 CLIP 索引…（${targets.length} 张，建好后语义/以图搜图/找相似/去重即可用，期间可正常操作）`,
+      );
+      let done = 0;
+      for (const t of targets) {
+        try {
+          await api.setClipEmbedding(t.id, await imageVector(convertFileSrc(t.img)));
+          done++;
+        } catch {
+          /* 跳过单张失败 */
+        }
+        await new Promise((r) => setTimeout(r, 0)); // 让出主线程，保持界面跟手
+      }
+      setStatus(`CLIP 索引已就绪（新建 ${done}/${targets.length}）`);
+    } catch {
+      /* 自动索引失败不打扰用户 */
+    } finally {
+      indexingRef.current = false;
+    }
+  }, []);
+
   async function buildIndex() {
+    if (indexingRef.current) {
+      setStatus("索引正在进行中…");
+      return;
+    }
+    indexingRef.current = true;
     try {
       setBusy(true);
       setStatus("加载 CLIP 模型…（首次需下载，约一两分钟）");
@@ -1243,6 +1398,7 @@ function App() {
       setStatus(`建索引失败：${e}`);
     } finally {
       setBusy(false);
+      indexingRef.current = false;
     }
   }
 
@@ -1409,40 +1565,53 @@ function App() {
     return m;
   }, [assets]);
 
-  const matchesFilter = (a: Asset) => {
-    switch (filter.kind) {
+  // 作用域：互斥的基础集合（trash 走单独的 trashed 列表，不在此匹配）
+  const matchesScope = (a: Asset) => {
+    switch (scope.kind) {
       case "all":
         return true;
-      case "tag":
-        return a.tags.some((t) => t === filter.value || t.startsWith(filter.value + "/"));
-      case "folder":
-        return isUnder(a.path, filter.value); // 含该目录及其所有子目录
-      case "color":
-        return primaryBucket(a.colors) === filter.value;
-      case "collection":
-        return collectionMembers.has(a.id);
       case "missing":
         return a.missing;
-      case "favorite":
-        return a.favorite;
+      case "collection":
+        return collectionMembers.has(a.id);
       case "trash":
-        return false; // 回收站走单独列表(trashed)，不在在库 assets 里匹配
-      case "type":
-        return filter.value === "image"
-          ? isImage(a)
-          : filter.value === "video"
-            ? isVideo(a)
-            : isAudio(a);
+        return false;
     }
   };
+  // 单条细化条件
+  const matchesCond = (a: Asset, c: Cond) => {
+    switch (c.kind) {
+      case "tag":
+        return a.tags.some((t) => t === c.value || t.startsWith(c.value + "/"));
+      case "folder":
+        return isUnder(a.path, c.value); // 含该目录及其所有子目录
+      case "color":
+        return primaryBucket(a.colors) === c.value;
+      case "favorite":
+        return a.favorite;
+      case "type":
+        return c.value === "image" ? isImage(a) : c.value === "video" ? isVideo(a) : isAudio(a);
+      case "format":
+        return a.format === c.value;
+      case "orient": {
+        if (!a.width || !a.height) return false;
+        const r = a.width / a.height;
+        return c.value === "land" ? r > 1.15 : c.value === "port" ? r < 0.87 : r >= 0.87 && r <= 1.15;
+      }
+      case "big":
+        return Math.max(a.width, a.height) >= 2000;
+    }
+  };
+  // 组合筛选：作用域 AND 所有条件
+  const matchesAll = (a: Asset) => matchesScope(a) && conds.every((c) => matchesCond(a, c));
   const matchesQuery = (a: Asset) =>
     query.trim() === "" ||
     a.name.toLowerCase().includes(query.toLowerCase()) ||
     a.tags.some((t) => t.includes(query));
 
-  const inTrash = filter.kind === "trash";
+  const inTrash = scope.kind === "trash";
   const filtered = (inTrash ? trashed : assets).filter(
-    (a) => (inTrash || matchesFilter(a)) && matchesQuery(a),
+    (a) => (inTrash || matchesAll(a)) && matchesQuery(a),
   );
   const sorted = [...filtered].sort((a, b) => {
     if (sortKey === "name") return a.name.localeCompare(b.name);
@@ -1591,32 +1760,114 @@ function App() {
     if (playlist.length) setViewer({ list: playlist, index: start });
   }
 
-  const isActive = (f: Filter) =>
-    f.kind === filter.kind &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (f.kind === "all" || (f as any).value === (filter as any).value);
+  // 作用域类 = 互斥；其余 = 细化条件（可叠加）
+  const isScopeKind = (k: Filter["kind"]) =>
+    k === "all" || k === "missing" || k === "trash" || k === "collection";
+  const condKey = (c: Cond) => ("value" in c ? `${c.kind}:${c.value}` : c.kind);
 
-  // 再点一下已激活的筛选 = 取消、回到「全部素材」
-  const toggleFilter = (f: Filter) => setFilter(isActive(f) ? { kind: "all" } : f);
+  // 设作用域：切换基础集合一律清空细化条件（“去到某处”，而非“在当前结果里再筛”）
+  function setScopeFilter(f: Scope) {
+    setScope(f);
+    setConds([]);
+    setSemanticIds(null);
+  }
+  // 兼容旧调用名：setFilter 接受任意 Filter，作用域类设作用域、条件类设为唯一条件
+  function setFilter(f: Filter) {
+    if (isScopeKind(f.kind)) {
+      setScopeFilter(f as Scope);
+    } else {
+      setScope({ kind: "all" });
+      setConds([f as Cond]);
+      setSemanticIds(null);
+    }
+  }
 
-  const filterLabel =
-    filter.kind === "all"
-      ? "全部素材"
-      : filter.kind === "missing"
+  const isActive = (f: Filter) => {
+    if (isScopeKind(f.kind)) {
+      if (f.kind === "all") return scope.kind === "all" && conds.length === 0;
+      if (f.kind === "collection")
+        return scope.kind === "collection" && scope.value === (f as { value: string }).value;
+      return scope.kind === f.kind;
+    }
+    const k = condKey(f as Cond);
+    return conds.some((c) => condKey(c) === k);
+  };
+
+  // 点筛选：作用域类→切换该作用域（再点回全部）；条件类→在条件数组里加/减（组合筛选）
+  const toggleFilter = (f: Filter) => {
+    if (isScopeKind(f.kind)) {
+      setScopeFilter(isActive(f) ? { kind: "all" } : (f as Scope));
+      return;
+    }
+    const c = f as Cond;
+    const k = condKey(c);
+    setConds((prev) =>
+      prev.some((x) => condKey(x) === k) ? prev.filter((x) => condKey(x) !== k) : [...prev, c],
+    );
+    setSemanticIds(null);
+  };
+
+  const removeCond = (c: Cond) => {
+    const k = condKey(c);
+    setConds((prev) => prev.filter((x) => condKey(x) !== k));
+  };
+  const clearConds = () => setConds([]);
+
+  // 单个条件 / 作用域的中文标签
+  const condLabel = (c: Cond): string =>
+    c.kind === "tag"
+      ? `标签:${c.value}`
+      : c.kind === "folder"
+      ? `文件夹:${lastSeg(c.value)}`
+      : c.kind === "color"
+      ? `配色:${c.value}`
+      : c.kind === "favorite"
+      ? "⭐收藏"
+      : c.kind === "type"
+      ? { image: "图片", video: "视频", audio: "音频" }[c.value]
+      : c.kind === "format"
+      ? `格式:${c.value}`
+      : c.kind === "orient"
+      ? { land: "横图", port: "竖图", square: "方图" }[c.value]
+      : "大图";
+  const scopeBaseLabel =
+    scope.kind === "missing"
       ? "失效链接"
-      : filter.kind === "favorite"
-      ? "⭐ 收藏"
-      : filter.kind === "tag"
-      ? `标签：${filter.value}`
-      : filter.kind === "folder"
-      ? `文件夹：${lastSeg(filter.value)}`
-      : filter.kind === "collection"
-      ? `合集：${collections.find((c) => String(c.id) === filter.value)?.name ?? filter.value}`
-      : filter.kind === "type"
-      ? { image: "图片", video: "视频", audio: "音频" }[filter.value]
-      : filter.kind === "trash"
+      : scope.kind === "trash"
       ? "🗑 回收站"
-      : `配色：${filter.value}`;
+      : scope.kind === "collection"
+      ? `合集:${collections.find((c) => String(c.id) === scope.value)?.name ?? scope.value}`
+      : null;
+  const filterLabel =
+    scope.kind === "trash"
+      ? "🗑 回收站"
+      : [scopeBaseLabel, ...conds.map(condLabel)].filter(Boolean).join(" · ") || "全部素材";
+
+  // ===== 智能文件夹（存下当前作用域+条件，侧栏一点重现）=====
+  function saveSmartFolder() {
+    if (scope.kind === "all" && conds.length === 0) {
+      setStatus("先设几个筛选条件（点标签/配色/收藏等叠加），再存为智能文件夹");
+      return;
+    }
+    const name = window.prompt("智能文件夹名字：", filterLabel);
+    if (name == null || !name.trim()) return;
+    const id = `sf-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`;
+    setSmartFolders((p) => [...p, { id, name: name.trim(), scope, conds }]);
+    setStatus(`已存为智能文件夹「${name.trim()}」`);
+  }
+  function applySmartFolder(sf: SmartFolder) {
+    setSemanticIds(null);
+    if (sf.scope.kind === "collection") {
+      // 合集成员需异步载入；先打开合集再套条件
+      void openCollection(Number(sf.scope.value)).then(() => setConds(sf.conds));
+    } else {
+      setScope(sf.scope);
+      setConds(sf.conds);
+    }
+  }
+  function deleteSmartFolder(id: string) {
+    setSmartFolders((p) => p.filter((s) => s.id !== id));
+  }
 
   // ===== 菜单 =====
   const menus: Menu[] = [
@@ -1626,6 +1877,9 @@ function App() {
         { label: "导入文件夹…", action: handleImport },
         { sep: true },
         { label: "导出元数据…", action: handleExport },
+        { sep: true },
+        { label: "💾 备份库（数据库+缩略图）…", action: handleBackup },
+        { label: "📥 从备份恢复…", action: handleRestore },
       ],
     },
     {
@@ -1634,6 +1888,7 @@ function App() {
         { label: "清除选择（Esc）", action: () => setSel(new Set()) },
         { sep: true },
         { label: "检测重复项", action: findDups },
+        { label: "🏷 标签管理（重命名/合并/删除）…", action: () => setShowTagMgr(true) },
         { label: "建立语义索引", action: buildIndex },
         { label: "重新生成缩略图", action: buildThumbs },
         { sep: true },
@@ -1695,13 +1950,59 @@ function App() {
     },
   ];
 
+  // 键盘翻图：←→/↑↓ 选上一张/下一张，回车或空格看大图，Delete 移入回收站。
+  // 不抢输入框/编辑区的键；看图浮层开着时让浮层自己处理。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (viewer) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const list = displayList;
+      if (!list.length) return;
+      const idx = list.findIndex((a) => a.id === selectedId);
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const n = list[idx < 0 ? 0 : Math.min(list.length - 1, idx + 1)];
+        if (n) setSelectedId(n.id);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const n = list[idx < 0 ? 0 : Math.max(0, idx - 1)];
+        if (n) setSelectedId(n.id);
+      } else if ((e.key === "Enter" || e.key === " ") && selectedId != null) {
+        e.preventDefault();
+        openViewer(selectedId);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && selectedId != null && !inTrash) {
+        e.preventDefault();
+        const fallback = list[idx + 1]?.id ?? list[idx - 1]?.id ?? null;
+        void removeAssetAction(selectedId);
+        setSelectedId(fallback);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [displayList, selectedId, viewer, inTrash]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 自动后台建 CLIP 索引：启动 3 秒后 + 每次素材数变化（导入）后补建缺失向量。
+  useEffect(() => {
+    const t = setTimeout(() => void autoBuildIndex(), 3000);
+    return () => clearTimeout(t);
+  }, [assets.length, autoBuildIndex]);
+
   // ===== 面板上下文 =====
   const dockState: DockState = {
     assets,
-    filter,
+    scope,
+    conds,
     setFilter,
     toggleFilter,
     isActive,
+    condLabel,
+    removeCond,
+    clearConds,
+    smartFolders,
+    saveSmartFolder,
+    applySmartFolder,
+    deleteSmartFolder,
     missingCount,
     trashedCount: trashed.length,
     autoSync,
@@ -1736,6 +2037,7 @@ function App() {
     onCardClick,
     openViewer,
     openCtxMenu,
+    dragOut,
     toggleFavorite,
     selected,
     addTag,
@@ -1820,6 +2122,14 @@ function App() {
       {showPrefs && <PreferencesModal onClose={() => setShowPrefs(false)} />}
 
       {showSavePath && <SavePathModal onClose={() => setShowSavePath(false)} />}
+      {showTagMgr && (
+        <TagManagerModal
+          tags={tags}
+          onRename={renameTagAction}
+          onDelete={deleteTagAction}
+          onClose={() => setShowTagMgr(false)}
+        />
+      )}
 
       {update && (
         <UpdateModal
@@ -1972,6 +2282,17 @@ function App() {
             >
               用默认程序打开
             </div>
+            {isImage(ctx.asset) && (
+              <div
+                className="ctx-item"
+                onClick={() => {
+                  copyImageAction(ctx.asset);
+                  setCtx(null);
+                }}
+              >
+                复制图片（粘贴用）
+              </div>
+            )}
             <div
               className="ctx-item"
               onClick={() => {

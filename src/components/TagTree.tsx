@@ -3,11 +3,11 @@ import { useMemo, useState } from "react";
 /** 层级标签树：按 "/" 分组，可展开折叠 */
 export default function TagTree({
   tags,
-  activeValue,
+  isActive,
   onPick,
 }: {
   tags: [string, number][];
-  activeValue: string | null;
+  isActive: (v: string) => boolean;
   onPick: (v: string) => void;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -38,7 +38,7 @@ export default function TagTree({
         const total = g.selfCount + g.children.reduce((s, c) => s + c.count, 0);
         return (
           <div key={top}>
-            <div className={"nav-item child" + (activeValue === top ? " active" : "")}>
+            <div className={"nav-item child" + (isActive(top) ? " active" : "")}>
               {hasChildren ? (
                 <span
                   className="chev"
@@ -67,7 +67,7 @@ export default function TagTree({
               g.children.map((c) => (
                 <div
                   key={c.full}
-                  className={"nav-item grandchild" + (activeValue === c.full ? " active" : "")}
+                  className={"nav-item grandchild" + (isActive(c.full) ? " active" : "")}
                   onClick={() => onPick(c.full)}
                 >
                   <span className="ellip">{c.leaf}</span>
