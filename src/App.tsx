@@ -156,7 +156,7 @@ function App() {
   const [showPrefs, setShowPrefs] = useState(false); // 首选项·快捷键
   const [showSavePath, setShowSavePath] = useState(false); // 素材保存路径
   const [showTagMgr, setShowTagMgr] = useState(false); // 标签管理
-  const [audioEdit, setAudioEdit] = useState<Asset | null>(null); // 音频编辑浮层
+  const [audioEdit, setAudioEdit] = useState<{ asset: Asset | null } | null>(null); // 音频编辑浮层（asset 为 null=空白，可录音）
   // 看球搜索引擎（Alt+E 换台与入口弹窗共用）；前端存 localStorage，Rust 侧由命令同步持久化
   const [webEngine, setWebEngine] = useState(() => {
     try {
@@ -1932,6 +1932,12 @@ function App() {
         { label: "文档", action: () => ensurePanel("doc", "文档") },
         { label: "详情", action: () => ensurePanel("inspector", "详情") },
         { sep: true },
+        {
+          label: "🎵 音频编辑（裁剪/效果/录音）",
+          action: () =>
+            setAudioEdit({ asset: selected && isAudio(selected) ? selected : null }),
+        },
+        { sep: true },
         { label: "重置布局", action: resetLayout },
       ],
     },
@@ -2134,7 +2140,7 @@ function App() {
       )}
       {audioEdit && (
         <AudioEditor
-          asset={audioEdit}
+          asset={audioEdit.asset}
           onClose={() => setAudioEdit(null)}
           onSavedNew={() => void reload()}
         />
@@ -2265,7 +2271,7 @@ function App() {
               <div
                 className="ctx-item"
                 onClick={() => {
-                  setAudioEdit(ctx.asset);
+                  setAudioEdit({ asset: ctx.asset });
                   setCtx(null);
                 }}
               >

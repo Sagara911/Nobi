@@ -13,7 +13,7 @@ export default function AudioEditor({
   onClose,
   onSavedNew,
 }: {
-  asset: Asset;
+  asset: Asset | null; // null = 空白模式（可录音 / 提示右键音频素材）
   onClose: () => void;
   onSavedNew: () => void;
 }) {
@@ -43,6 +43,10 @@ export default function AudioEditor({
 
   // —— 加载并解码 ——
   useEffect(() => {
+    if (!asset) {
+      setStatus("空白：点「● 录音」开始，或关掉这里、右键某个音频素材来编辑");
+      return;
+    }
     let alive = true;
     (async () => {
       try {
@@ -61,7 +65,7 @@ export default function AudioEditor({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asset.path]);
+  }, [asset?.path]);
 
   // —— 容器宽度自适应 ——
   useEffect(() => {
@@ -286,7 +290,7 @@ export default function AudioEditor({
     try {
       setBusy(true);
       const path = await saveDialog({
-        defaultPath: `${baseName(asset.name)}.${kind}`,
+        defaultPath: `${asset ? baseName(asset.name) : "录音"}.${kind}`,
         filters: [{ name: kind.toUpperCase(), extensions: [kind] }],
       });
       if (!path) return;
@@ -305,7 +309,7 @@ export default function AudioEditor({
       setBusy(true);
       setStatus("另存为新素材…");
       const bytes = kind === "wav" ? dsp.encodeWav(buf) : dsp.encodeMp3(buf);
-      const name = `${baseName(asset.name)}_edit.${kind}`;
+      const name = `${asset ? baseName(asset.name) : "录音"}_edit.${kind}`;
       await api.importBlob(name, bytesToB64(bytes));
       setStatus(`已存为新素材：${name}`);
       onSavedNew();
@@ -318,6 +322,10 @@ export default function AudioEditor({
   // 把当前波形设成该音频资产的封面（库里浏览更直观）
   const setCover = async () => {
     if (!buf) return;
+    if (!asset) {
+      setStatus("空白模式没有关联素材，先「另存为素材」再设封面");
+      return;
+    }
     try {
       const off = document.createElement("canvas");
       off.width = 320;
@@ -382,7 +390,7 @@ export default function AudioEditor({
     <div className="modal-overlay audio-overlay" onClick={onClose}>
       <div className="audio-editor" onClick={(e) => e.stopPropagation()}>
         <div className="ae-head">
-          <strong>🎵 音频编辑 · {asset.name}</strong>
+          <strong>🎵 音频编辑 · {asset ? asset.name : "新录音"}</strong>
           <span className="ae-status">{status}</span>
           <button className="btn" onClick={onClose}>关闭</button>
         </div>
