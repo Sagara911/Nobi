@@ -1,4 +1,4 @@
-// 音频快剪台：主窗内的全屏工具浮层（仿 Audacity 的常用功能子集）。
+// 音频快剪台：作为 dock 面板（与画板/文档同级），仿 Audacity 常用功能子集。
 // 纯 Web Audio：解码/播放/裁剪/效果/导出；改完可「另存为新素材」入库，不动原文件。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -10,11 +10,9 @@ import { bytesToB64 } from "../contactSheet";
 
 export default function AudioEditor({
   asset,
-  onClose,
   onSavedNew,
 }: {
   asset: Asset | null; // null = 空白模式（可录音 / 提示右键音频素材）
-  onClose: () => void;
   onSavedNew: () => void;
 }) {
   const [buf, setBuf] = useState<AudioBuffer | null>(null);
@@ -36,6 +34,7 @@ export default function AudioEditor({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(900);
+  const [height, setHeight] = useState(240);
   const playRef = useRef<{ src: AudioBufferSourceNode; ctxStart: number; from: number } | null>(null);
   const headRef = useRef(0); // 当前播放头（采样）
   const rafRef = useRef(0);
@@ -67,13 +66,17 @@ export default function AudioEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset?.path]);
 
-  // —— 容器宽度自适应 ——
+  // —— 波形区尺寸自适应（面板大小随 dock 变化） ——
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(Math.max(320, el.clientWidth - 4)));
+    const measure = () => {
+      setWidth(Math.max(320, el.clientWidth - 2));
+      setHeight(Math.max(120, el.clientHeight - 2));
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setWidth(Math.max(320, el.clientWidth - 4));
+    measure();
     return () => ro.disconnect();
   }, []);
 
@@ -386,90 +389,121 @@ export default function AudioEditor({
     }
   };
 
+  // 效果下拉：选一项即执行（需参数的弹输入框），选完归位
+  const applyFx = (k: string) => {
+    if (!buf) return;
+    if (k === "speed") {
+      const v = prompt("变速倍率（>1 加快并升调，<1 放慢降调）", "1.25");
+      if (v != null) run(`变速 ${v}×`, () => dsp.changeSpeed(buf, Number(v) || 1));
+    } else if (k === "lowpass") {
+      const v = prompt("低通截止频率 Hz（高于此衰减）", "4000");
+      if (v != null) run("低通滤波", () => dsp.filter(buf, "lowpass", Number(v) || 4000));
+    } else if (k === "highpass") {
+      const v = prompt("高通截止频率 Hz（低于此衰减）", "200");
+      if (v != null) run("高通滤波", () => dsp.filter(buf, "highpass", Number(v) || 200));
+    } else if (k === "eq") {
+      const f = prompt("中心频率 Hz", "1000");
+      if (f == null) return;
+      const g = prompt("增益 dB（+提升 / -削减）", "6");
+      if (g != null) run("EQ", () => dsp.filter(buf, "peaking", Number(f) || 1000, Number(g) || 0, 1));
+    } else if (k === "compress") run("压缩", () => dsp.compress(buf));
+    else if (k === "reverb") run("混响", () => dsp.reverb(buf));
+    else if (k === "echo") run("回声", () => dsp.echo(buf));
+  };
+
   return (
-    <div className="modal-overlay audio-overlay" onClick={onClose}>
-      <div className="audio-editor" onClick={(e) => e.stopPropagation()}>
-        <div className="ae-head">
-          <strong>🎵 音频编辑 · {asset ? asset.name : "新录音"}</strong>
-          <span className="ae-status">{status}</span>
-          <button className="btn" onClick={onClose}>关闭</button>
-        </div>
+    <div className="audio-editor">
+      <div className="ae-head">
+        <strong className="ellip">🎵 {asset ? asset.name : "新录音（空白）"}</strong>
+        <span className="ae-status">{status}</span>
+      </div>
 
-        {err ? (
-          <div className="ae-err">{err}</div>
-        ) : (
-          <>
-            <div className="ae-wave" ref={wrapRef}>
-              <canvas
-                ref={canvasRef}
-                width={width}
-                height={220}
-                style={{ width: "100%", height: 220, cursor: "text" }}
-                onMouseDown={onDown}
-                onMouseMove={onMove}
-                onMouseUp={onUp}
-                onMouseLeave={onUp}
-              />
-            </div>
+      {err ? (
+        <div className="ae-err">{err}</div>
+      ) : (
+        <>
+          <div className="ae-wave" ref={wrapRef}>
+            <canvas
+              ref={canvasRef}
+              width={width}
+              height={height}
+              style={{ width: "100%", height: "100%", cursor: "text" }}
+              onMouseDown={onDown}
+              onMouseMove={onMove}
+              onMouseUp={onUp}
+              onMouseLeave={onUp}
+            />
+          </div>
 
-            <div className="ae-bar">
-              <button className="btn" disabled={!buf} onClick={playing ? stopPlay : play}>
+          <div className="ae-toolbar">
+            {/* 走带 / 视图 */}
+            <div className="ae-row">
+              <button className="btn primary" disabled={!buf} onClick={playing ? stopPlay : play}>
                 {playing ? "■ 停止" : "▶ 播放"}
               </button>
               <label className="ae-chk">
-                <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> 循环选区
+                <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} />循环选区
               </label>
-              <button className="btn" disabled={!buf} onClick={selAll}>全选</button>
-              <button className="btn" disabled={!buf} onClick={() => setSel(null)}>清选区</button>
-              <span className="ae-sep" />
-              <button className="btn" onClick={() => zoom(0.5)}>放大</button>
-              <button className="btn" onClick={() => zoom(2)}>缩小</button>
-              <button className={"btn" + (spectro ? " primary" : "")} onClick={() => setSpectro((s) => !s)}>
-                {spectro ? "波形" : "频谱图"}
-              </button>
-              <span className="ae-sep" />
-              <button className="btn" disabled={busy} onClick={undo}>↶ 撤销</button>
-              <button className="btn" disabled={busy} onClick={redo}>↷ 重做</button>
-              <button className={"btn" + (recording ? " primary" : "")} onClick={toggleRecord}>
+              <button className={"btn" + (recording ? " danger" : "")} onClick={toggleRecord}>
                 {recording ? "● 停止录音" : "● 录音"}
               </button>
+              <span className="ae-sep" />
+              <button className="btn" disabled={!buf} onClick={() => zoom(0.5)} title="放大">🔍＋</button>
+              <button className="btn" disabled={!buf} onClick={() => zoom(2)} title="缩小">🔍－</button>
+              <button className="btn" disabled={!buf} onClick={selAll}>全选</button>
+              <button className="btn" disabled={!buf || !sel} onClick={() => setSel(null)}>清选区</button>
+              <button className={"btn" + (spectro ? " primary" : "")} disabled={!buf} onClick={() => setSpectro((s) => !s)}>
+                {spectro ? "看波形" : "看频谱"}
+              </button>
+              <span className="ae-sep" />
+              <button className="btn" disabled={busy} onClick={undo}>↶</button>
+              <button className="btn" disabled={busy} onClick={redo}>↷</button>
             </div>
 
-            <div className="ae-bar">
-              <span className="ae-grp">剪辑:</span>
+            {/* 编辑 / 效果 */}
+            <div className="ae-row">
+              <span className="ae-grp">剪辑</span>
               <button className="btn" disabled={busy} onClick={() => needSel() && run("裁剪到选区", () => dsp.trim(buf!, S().a, S().b))}>裁剪</button>
-              <button className="btn" disabled={busy} onClick={() => needSel() && run("删除选区", () => dsp.deleteRange(buf!, S().a, S().b))}>删除选区</button>
-              <button className="btn" disabled={busy} onClick={() => needSel() && run("静音选区", () => dsp.silence(buf!, S().a, S().b))}>静音选区</button>
-              <span className="ae-grp">增益:</span>
+              <button className="btn" disabled={busy} onClick={() => needSel() && run("删除选区", () => dsp.deleteRange(buf!, S().a, S().b))}>删除</button>
+              <button className="btn" disabled={busy} onClick={() => needSel() && run("静音选区", () => dsp.silence(buf!, S().a, S().b))}>静音</button>
+              <span className="ae-sep" />
+              <span className="ae-grp">增益</span>
               <button className="btn" disabled={busy} onClick={() => run("淡入", () => dsp.fadeIn(buf!, S().a, S().b))}>淡入</button>
               <button className="btn" disabled={busy} onClick={() => run("淡出", () => dsp.fadeOut(buf!, S().a, S().b))}>淡出</button>
               <button className="btn" disabled={busy} onClick={() => run("归一化", () => dsp.normalize(buf!, -1))}>归一化</button>
-              <button className="btn" disabled={busy} onClick={() => { const v = prompt("增益 dB（正为放大、负为减小）", "3"); if (v != null) run(`增益 ${v}dB`, () => dsp.gain(buf!, Number(v) || 0, S().a, S().b)); }}>增益…</button>
+              <button className="btn" disabled={busy} onClick={() => { const v = prompt("增益 dB（正放大 / 负减小）", "3"); if (v != null) run(`增益 ${v}dB`, () => dsp.gain(buf!, Number(v) || 0, S().a, S().b)); }}>增益…</button>
               <button className="btn" disabled={busy} onClick={() => run("反转", () => dsp.reverse(buf!, S().a, S().b))}>反转</button>
+              <span className="ae-sep" />
+              <select
+                className="ae-fx"
+                value=""
+                disabled={busy || !buf}
+                onChange={(e) => { const k = e.target.value; e.currentTarget.value = ""; applyFx(k); }}
+              >
+                <option value="" disabled>加效果…</option>
+                <option value="speed">变速</option>
+                <option value="lowpass">低通滤波</option>
+                <option value="highpass">高通滤波</option>
+                <option value="eq">均衡 EQ</option>
+                <option value="compress">压缩</option>
+                <option value="reverb">混响</option>
+                <option value="echo">回声</option>
+              </select>
             </div>
 
-            <div className="ae-bar">
-              <span className="ae-grp">效果:</span>
-              <button className="btn" disabled={busy} onClick={() => { const v = prompt("变速倍率（>1 加快并升调）", "1.25"); if (v != null) run(`变速 ${v}×`, () => dsp.changeSpeed(buf!, Number(v) || 1)); }}>变速…</button>
-              <button className="btn" disabled={busy} onClick={() => { const v = prompt("低通截止频率 Hz", "4000"); if (v != null) run("低通", () => dsp.filter(buf!, "lowpass", Number(v) || 4000)); }}>低通…</button>
-              <button className="btn" disabled={busy} onClick={() => { const v = prompt("高通截止频率 Hz", "200"); if (v != null) run("高通", () => dsp.filter(buf!, "highpass", Number(v) || 200)); }}>高通…</button>
-              <button className="btn" disabled={busy} onClick={() => { const f = prompt("中心频率 Hz", "1000"); if (f == null) return; const g = prompt("增益 dB（+提升 / -削减）", "6"); if (g != null) run("EQ", () => dsp.filter(buf!, "peaking", Number(f) || 1000, Number(g) || 0, 1)); }}>EQ…</button>
-              <button className="btn" disabled={busy} onClick={() => run("压缩", () => dsp.compress(buf!))}>压缩</button>
-              <button className="btn" disabled={busy} onClick={() => run("混响", () => dsp.reverb(buf!))}>混响</button>
-              <button className="btn" disabled={busy} onClick={() => run("回声", () => dsp.echo(buf!))}>回声</button>
+            {/* 导出 */}
+            <div className="ae-row">
+              <span className="ae-grp">导出</span>
+              <button className="btn primary" disabled={busy || !buf} onClick={() => saveAsNew("wav")}>另存为素材·WAV</button>
+              <button className="btn primary" disabled={busy || !buf} onClick={() => saveAsNew("mp3")}>另存为素材·MP3</button>
+              <span className="ae-sep" />
+              <button className="btn" disabled={busy || !buf} onClick={() => exportFile("wav")}>导出 WAV…</button>
+              <button className="btn" disabled={busy || !buf} onClick={() => exportFile("mp3")}>导出 MP3…</button>
+              <button className="btn" disabled={busy || !buf || !asset} onClick={setCover}>设为波形封面</button>
             </div>
-
-            <div className="ae-bar">
-              <span className="ae-grp">导出:</span>
-              <button className="btn primary" disabled={busy || !buf} onClick={() => saveAsNew("wav")}>另存为素材(WAV)</button>
-              <button className="btn primary" disabled={busy || !buf} onClick={() => saveAsNew("mp3")}>另存为素材(MP3)</button>
-              <button className="btn" disabled={busy || !buf} onClick={() => exportFile("wav")}>导出WAV…</button>
-              <button className="btn" disabled={busy || !buf} onClick={() => exportFile("mp3")}>导出MP3…</button>
-              <button className="btn" disabled={busy || !buf} onClick={setCover}>设为波形封面</button>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import FolderTree from "./components/FolderTree";
 import Section from "./components/Section";
 import BoardCanvas, { type BoardEditor } from "./Board";
 import DocEditor from "./components/DocEditor";
+import AudioEditor from "./components/AudioEditor";
 
 /** 文件夹列表超过该数量时折叠显示 */
 const FOLDER_CAP = 8;
@@ -192,6 +193,8 @@ export interface DockState {
     { assetId?: number; sourcePath: string; thumb?: string } | null
   >;
   exportContactSheet: (list: Asset[], title: string) => void;
+  audioAsset: Asset | null; // 音频编辑面板当前编辑的素材（null=空白可录音）
+  onAudioSaved: () => void; // 另存/设封面后刷新库
   thumbSize: number;
   setThumbSize: (n: number) => void;
   query: string;
@@ -737,10 +740,16 @@ function DocPanel(_p: IDockviewPanelProps) {
   return <DocEditor />;
 }
 
+function AudioPanel(_p: IDockviewPanelProps) {
+  const d = useDock();
+  return <AudioEditor asset={d.audioAsset} onSavedNew={d.onAudioSaved} />;
+}
+
 export const DOCK_COMPONENTS = {
   library: LibraryPanel,
   grid: GridPanel,
   inspector: InspectorPanel,
   board: BoardPanel,
   doc: DocPanel,
+  audio: AudioPanel,
 };

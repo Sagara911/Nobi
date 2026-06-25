@@ -56,7 +56,6 @@ import TranslationModal from "./components/TranslationModal";
 import PreferencesModal from "./components/PreferencesModal";
 import SavePathModal from "./components/SavePathModal";
 import TagManagerModal from "./components/TagManagerModal";
-import AudioEditor from "./components/AudioEditor";
 import UpdateModal from "./components/UpdateModal";
 import ImageViewer from "./components/ImageViewer";
 import { buildContactSheetPdf, bytesToB64 } from "./contactSheet";
@@ -156,7 +155,7 @@ function App() {
   const [showPrefs, setShowPrefs] = useState(false); // 首选项·快捷键
   const [showSavePath, setShowSavePath] = useState(false); // 素材保存路径
   const [showTagMgr, setShowTagMgr] = useState(false); // 标签管理
-  const [audioEdit, setAudioEdit] = useState<{ asset: Asset | null } | null>(null); // 音频编辑浮层（asset 为 null=空白，可录音）
+  const [audioAsset, setAudioAsset] = useState<Asset | null>(null); // 音频编辑面板当前素材（null=空白可录音）
   // 看球搜索引擎（Alt+E 换台与入口弹窗共用）；前端存 localStorage，Rust 侧由命令同步持久化
   const [webEngine, setWebEngine] = useState(() => {
     try {
@@ -1934,8 +1933,10 @@ function App() {
         { sep: true },
         {
           label: "🎵 音频编辑（裁剪/效果/录音）",
-          action: () =>
-            setAudioEdit({ asset: selected && isAudio(selected) ? selected : null }),
+          action: () => {
+            setAudioAsset(selected && isAudio(selected) ? selected : null);
+            ensurePanel("audio", "音频编辑");
+          },
         },
         { sep: true },
         { label: "重置布局", action: resetLayout },
@@ -2069,6 +2070,8 @@ function App() {
     saveBoardAsCollection,
     saveBoardImageToLibrary,
     exportContactSheet,
+    audioAsset,
+    onAudioSaved: () => void reload(),
     thumbSize,
     setThumbSize,
     query,
@@ -2136,13 +2139,6 @@ function App() {
           onRename={renameTagAction}
           onDelete={deleteTagAction}
           onClose={() => setShowTagMgr(false)}
-        />
-      )}
-      {audioEdit && (
-        <AudioEditor
-          asset={audioEdit.asset}
-          onClose={() => setAudioEdit(null)}
-          onSavedNew={() => void reload()}
         />
       )}
 
@@ -2271,7 +2267,8 @@ function App() {
               <div
                 className="ctx-item"
                 onClick={() => {
-                  setAudioEdit({ asset: ctx.asset });
+                  setAudioAsset(ctx.asset);
+                  ensurePanel("audio", "音频编辑");
                   setCtx(null);
                 }}
               >
