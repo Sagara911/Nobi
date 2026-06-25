@@ -56,6 +56,7 @@ import TranslationModal from "./components/TranslationModal";
 import PreferencesModal from "./components/PreferencesModal";
 import SavePathModal from "./components/SavePathModal";
 import TagManagerModal from "./components/TagManagerModal";
+import AudioEditor from "./components/AudioEditor";
 import UpdateModal from "./components/UpdateModal";
 import ImageViewer from "./components/ImageViewer";
 import { buildContactSheetPdf, bytesToB64 } from "./contactSheet";
@@ -155,6 +156,7 @@ function App() {
   const [showPrefs, setShowPrefs] = useState(false); // 首选项·快捷键
   const [showSavePath, setShowSavePath] = useState(false); // 素材保存路径
   const [showTagMgr, setShowTagMgr] = useState(false); // 标签管理
+  const [audioEdit, setAudioEdit] = useState<Asset | null>(null); // 音频编辑浮层
   // 看球搜索引擎（Alt+E 换台与入口弹窗共用）；前端存 localStorage，Rust 侧由命令同步持久化
   const [webEngine, setWebEngine] = useState(() => {
     try {
@@ -2130,6 +2132,13 @@ function App() {
           onClose={() => setShowTagMgr(false)}
         />
       )}
+      {audioEdit && (
+        <AudioEditor
+          asset={audioEdit}
+          onClose={() => setAudioEdit(null)}
+          onSavedNew={() => void reload()}
+        />
+      )}
 
       {update && (
         <UpdateModal
@@ -2252,6 +2261,17 @@ function App() {
                   </div>
                 ) : null;
               })()}
+            {isAudio(ctx.asset) && (
+              <div
+                className="ctx-item"
+                onClick={() => {
+                  setAudioEdit(ctx.asset);
+                  setCtx(null);
+                }}
+              >
+                🎵 编辑音频（裁剪 / 效果 / 转码）
+              </div>
+            )}
             {(isImage(ctx.asset) || isVideo(ctx.asset)) && (
               <div
                 className="ctx-item"

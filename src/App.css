@@ -1070,3 +1070,27 @@ textarea.cfg-input { resize: vertical; font-family: inherit; line-height: 1.5; }
 .cond-link.save:hover {
   text-decoration: underline;
 }
+
+/* 音频编辑浮层 */
+.audio-overlay { align-items: center; justify-content: center; }
+.audio-editor {
+  width: min(1000px, 94vw);
+  max-height: 92vh;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ae-head { display: flex; align-items: center; gap: 12px; }
+.ae-head strong { color: var(--text-1); }
+.ae-status { flex: 1; color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ae-err { color: #e06a5a; padding: 24px; text-align: center; }
+.ae-wave { width: 100%; background: #0e0e10; border: 1px solid var(--border); border-radius: 6px; }
+.ae-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.ae-grp { color: var(--text-2); font-size: 12px; margin: 0 4px 0 2px; }
+.ae-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+.ae-chk { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-size: 12px; }
