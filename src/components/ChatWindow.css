@@ -347,14 +347,16 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.82);
-  cursor: zoom-out;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
 }
 .chat-lightbox img {
   max-width: 94vw;
   max-height: 94vh;
   object-fit: contain;
   border-radius: 6px;
-  cursor: default;
+  will-change: transform;
 }
 .chat-lightbox-x {
   position: fixed;

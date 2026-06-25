@@ -216,17 +216,47 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   const [dragging, setDragging] = useState(false);
   const [panel, setPanel] = useState<null | "emoji" | "sticker">(null);
   const [lightbox, setLightbox] = useState<string | null>(null); // 点开聊天图片看大图（窗口内浮层，不开新窗）
+  const lbRef = useRef<HTMLDivElement>(null); // 大图浮层根（挂非被动 wheel 监听）
+  const lbView = useRef({ scale: 1, x: 0, y: 0 }); // 缩放/平移（用 ref 避免滚轮闭包拿到旧值）
+  const lbDrag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const [, setLbVer] = useState(0);
+  const lbBump = () => setLbVer((v) => v + 1); // 改了 lbView 后强制重渲染
   const [stickers, setStickers] = useState<Sticker[]>(() => getStickers());
   const [mentionQ, setMentionQ] = useState<string | null>(null); // 正在输入的 @查询(null=没在@)
 
-  // 大图浮层：Esc 关闭（点浮层任意处也关）
+  // 大图浮层：Esc 关闭；每次开图复位缩放；滚轮在光标处缩放（非被动监听才能 preventDefault 阻止背后滚动）
   useEffect(() => {
     if (!lightbox) return;
+    lbView.current = { scale: 1, x: 0, y: 0 };
+    lbBump();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setLightbox(null);
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const el = lbRef.current;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const v = lbView.current;
+      const old = v.scale;
+      const next = Math.min(8, Math.max(1, old * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      if (next === old) return;
+      if (next === 1) {
+        lbView.current = { scale: 1, x: 0, y: 0 };
+      } else {
+        const cx = e.clientX - window.innerWidth / 2;
+        const cy = e.clientY - window.innerHeight / 2;
+        const f = next / old;
+        v.x = cx - f * (cx - v.x);
+        v.y = cy - f * (cy - v.y);
+        v.scale = next;
+      }
+      lbBump();
+    };
+    el?.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      el?.removeEventListener("wheel", onWheel);
+    };
   }, [lightbox]);
 
   // @候选：按"人"(clientId)去重，每人只取其最新用过的名字——避免某人改名后
@@ -798,8 +828,44 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
       </div>
 
       {lightbox && (
-        <div className="chat-lightbox" onClick={() => setLightbox(null)} title="点任意处关闭">
-          <img src={lightbox} alt="大图" onClick={(e) => e.stopPropagation()} />
+        <div
+          ref={lbRef}
+          className="chat-lightbox"
+          title="滚轮缩放 · 放大后拖动平移 · 双击复位 · 点空白处或 Esc 关闭"
+          onClick={() => {
+            if (lbView.current.scale === 1) setLightbox(null); // 放大状态下点击不关，避免误触
+          }}
+          onPointerDown={(e) => {
+            if (lbView.current.scale <= 1) return;
+            lbDrag.current = { x: e.clientX, y: e.clientY, px: lbView.current.x, py: lbView.current.y };
+            (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const d = lbDrag.current;
+            if (!d) return;
+            lbView.current.x = d.px + (e.clientX - d.x);
+            lbView.current.y = d.py + (e.clientY - d.y);
+            lbBump();
+          }}
+          onPointerUp={() => {
+            lbDrag.current = null;
+          }}
+        >
+          <img
+            src={lightbox}
+            alt="大图"
+            draggable={false}
+            style={{
+              transform: `translate(${lbView.current.x}px, ${lbView.current.y}px) scale(${lbView.current.scale})`,
+              cursor: lbView.current.scale > 1 ? "grab" : "default",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              lbView.current = { scale: lbView.current.scale > 1 ? 1 : 2, x: 0, y: 0 };
+              lbBump();
+            }}
+          />
           <button className="chat-lightbox-x" onClick={() => setLightbox(null)}>✕</button>
         </div>
       )}
