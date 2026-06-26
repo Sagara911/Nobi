@@ -108,7 +108,8 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **调用命令**：codex 走 `codex exec --json --sandbox <level> "<prompt>"`（`--json` 出 JSONL 事件，前端只挑 `agent_message` 显示、过程折叠）；claude 走 `claude -p "<prompt>"`（权限映射待细化）。**Windows 经 `cmd /C` 调**（npm 全局是 `codex.cmd`，CreateProcess 找不到 .cmd）。**子进程 stdin 设 `Stdio::null()`**（codex exec 会读 stdin，GUI 进程不喂 EOF 会卡）。
 - **权限三档**（设置里切）→ codex `--sandbox read-only|workspace-write|danger-full-access`。
 - **前提**：用户机器要装 `npm i -g @openai/codex` + `codex login`（或 `OPENAI_API_KEY`）；没装 `agent_check` 报错、气泡提示。
-- **窗口**：折叠态 76×76 小图标（点击 `setSize` 放大成 360×480 聊天窗，「—」收回）；`open_pet_window` 命令（仿 `open_chat_launcher` 隐藏建窗→show，`transparent(false)` 避本机 layered-alpha 坑）；`pet-window.json` capability。
+- **窗口（v0.4.5）**：折叠态 **60px 透明圆角小图标**（`open_pet_window` `transparent(true)`+`shadow(false)`；首开 `setSize` 强制方形防椭圆）；点击 `setSize` 放大成 360×480 聊天窗、「—」收回。可拖动(mousedown 阈值判定拖/点)+松手**吸附最近屏幕边**+**记住手动位置**(localStorage `nobi-winky-pos-v1`)；展开**按图标所在屏自动定方向**(monitorForPoint 按坐标查屏，避开多屏接缝歧义)，**rAF 逐帧 fire-and-forget 平滑长大**(awaited setSize 会卡，必须 rAF+不 await)。`pet-window.json` capability 含 set-resizable/set-position/outer-position/outer-size/current-monitor/primary-monitor/hide/start-dragging。
+- **logo（WinkyLogo SVG）**：终端表情 `>` 左眼 + `_` 嘴 + 右眼位状态符号；phase 状态机随干活变脸：idle `>_`(光标闪)/waiting `>_•`/running `>_…`(三点呼吸)/done `>_✓`(2.5s 回 idle)。气泡 UI(你右金/Winky 左灰带头像，过程折叠 details)。
 - **开机出现**：`winky_get/set_autoshow`（存 `winky_prefs.json`），`setup` 里若开启则启动即 `open_pet_window`；**需 Nobi 本身已开机自启**才在开机时出现。
 - **与 MCP 联动**：Winky 起的 codex/claude 可调上面的 nobi MCP（`nobi_search` 等）反过来操作素材库——`生成/管理` 闭环的入口。
 

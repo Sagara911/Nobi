@@ -21,4 +21,4 @@ metadata:
 
 **明确没做(v2)**：stream-json 结构化解析(看工具调用过程)、逐动作气泡审批(exec 非交互模式难做)、Claude 权限映射、宠物动画/语音、读 Nobi 上下文(可让它调 [[gringotts-project]] 里的 nobi MCP `nobi_search` 联动)。
 
-未提交、未发版(写完时)。
+**v0.4.5 精修定稿**(2026-06-26)：折叠态 **60px 透明圆角小图标**(open_pet_window `transparent(true)`+`shadow(false)`，首开 setSize 强制方形防椭圆)；可拖动(mousedown 阈值判定拖/点，startDragging)+松手**吸附最近屏幕边**(rAF 缓动飘移)+**记住手动位置**(localStorage `nobi-winky-pos-v1`)；展开按图标所在屏(monitorForPoint 按坐标查屏，避开多屏接缝歧义)**自动定方向**(右→左/左→右/上下半)，**rAF 逐帧 fire-and-forget 平滑长大**(awaited setSize 会卡，必须 rAF+不 await)；收起回记忆位置。logo 改成 **WinkyLogo 终端表情**(SVG，参考图样式：`>` 左眼 polyline + `_` 嘴 line + 右眼位状态符号)，phase 状态机：idle `>_`(光标闪)/waiting `>_•`/running `>_…`(三点呼吸)/done `>_✓`(2.5s 回 idle)；坐标是用户在 artifact 调试台(winky-face-tuner)调好烘进的(eye 26,43/36,51/26,59；mouth 42→60 @72.5；stroke 5.75；sym 中心 69.5,50)。气泡 UI(用户右金/Winky 左灰带头像，过程折叠 details)。pet-window.json capability 补了 set-resizable/set-position/outer-position/outer-size/current-monitor/primary-monitor/hide/start-dragging。**已发版 v0.4.5。仍未真机端到端验 codex 实跑**。
