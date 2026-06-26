@@ -1,0 +1,173 @@
+/* 桌宠窗：窗口本身透明，内部一张圆角卡片 */
+html.pet-window,
+body.pet-window,
+body.pet-window #root {
+  background: #16161a;
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 折叠态小图标：填满 76×76 的小窗，点击展开，可拖动 */
+.winky-bubble {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  cursor: pointer;
+  user-select: none;
+  background: radial-gradient(circle at 50% 40%, #2a2a30, #16161a);
+  border-radius: 50%;
+  border: 1px solid rgba(227, 176, 75, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.winky-bubble:hover { border-color: #e3b04b; }
+.winky-bubble.busy { animation: winky-spin 1.2s linear infinite; }
+@keyframes winky-spin { to { transform: rotate(360deg); } }
+
+.pet {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #16161a;
+  color: #ececee;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 13px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+.pet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #1d1d22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: move;
+  user-select: none;
+}
+.pet-face { font-size: 18px; }
+.pet-title { flex: 1; font-weight: 600; }
+.pet-x {
+  background: none;
+  border: none;
+  color: #98989f;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.pet-x:hover { background: rgba(255, 255, 255, 0.08); color: #ececee; }
+.pet-x.on { color: #e3b04b; }
+
+.pet-cfg {
+  padding: 8px 10px;
+  background: #131316;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.pet-cfg label { display: flex; align-items: center; gap: 6px; color: #98989f; }
+.pet-cfg select,
+.pet-cfg input {
+  flex: 1;
+  background: #212124;
+  color: #ececee;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.pet-cfg-row button {
+  background: #212124;
+  color: #ececee;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.pet-status { color: #98989f; font-size: 11px; word-break: break-all; }
+.pet-chk { display: flex; align-items: center; gap: 6px; color: #98989f; font-size: 12px; }
+
+.pet-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pet-empty { color: #6b6b72; text-align: center; margin: auto; line-height: 1.7; }
+.pet-line { white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+.pet-user { color: #e3b04b; }
+.pet-out { color: #cfcfd4; }
+.pet-err { color: #e06a5a; }
+.pet-running { color: #e3b04b; font-size: 12px; padding-top: 4px; }
+
+/* 过程折叠块：右侧小箭头，默认收起 */
+.pet-steps { margin: 2px 0; }
+.pet-steps > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b6b72;
+  font-size: 11px;
+  padding: 2px 0;
+}
+.pet-steps > summary::-webkit-details-marker { display: none; }
+.pet-steps > summary::before { content: "🛠"; }
+.pet-steps > summary::after {
+  content: "›";
+  margin-left: auto;
+  font-size: 13px;
+  transition: transform 0.15s;
+}
+.pet-steps[open] > summary::after { transform: rotate(90deg); }
+.pet-step {
+  color: #6b6b72;
+  font-size: 11px;
+  padding-left: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+.pet-sys { color: #6b6b72; text-align: center; font-size: 11px; }
+
+.pet-input {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1d1d22;
+}
+.pet-input textarea {
+  flex: 1;
+  resize: none;
+  height: 38px;
+  background: #212124;
+  color: #ececee;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.pet-send {
+  align-self: stretch;
+  background: #e3b04b;
+  color: #1a1a1a;
+  border: none;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pet-send.danger { background: #e06a5a; color: #fff; }

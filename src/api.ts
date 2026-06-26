@@ -230,5 +230,21 @@ export const loadDoc = (id: number) => invoke<string | null>("load_doc", { id })
 export const mcpSearchResult = (id: number, ids: number[]) =>
   invoke<void>("mcp_search_result", { id, ids });
 
+// ===== 桌宠 Agent 中转（codex/claude CLI）=====
+export interface AgentOpts {
+  agent: string; // "codex" | "claude"
+  bin: string; // 可执行名/路径，空=默认
+  cwd: string; // 工作目录
+  sandbox: string; // "read-only" | "workspace-write" | "full"
+  prompt: string;
+}
+export const agentCheck = (agent: string, bin: string) =>
+  invoke<string>("agent_check", { agent, bin });
+export const agentRun = (opts: AgentOpts) => invoke<void>("agent_run", { opts });
+export const agentCancel = () => invoke<void>("agent_cancel");
+export const openPetWindow = () => invoke<void>("open_pet_window");
+export const winkyGetAutoshow = () => invoke<boolean>("winky_get_autoshow");
+export const winkySetAutoshow = (on: boolean) => invoke<void>("winky_set_autoshow", { on });
+
 export const exportExtension = () => invoke<string>("export_extension");
 export const exportMcpScript = () => invoke<string>("export_mcp_script");

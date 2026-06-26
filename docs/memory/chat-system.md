@@ -89,6 +89,13 @@ Nobi 加的「和朋友聊天」子系统（2026-06-15 本会话从零搭，[[gr
 - `components/LudoGame.tsx`(+css):沿用 UNO 房主权威+广播快照+lobby/join/state/action 那套(房主在 join 时按入座序分配颜色 r/y/g/b)。棋盘用**方环简化布局**(52 格环+各色回家通道+四角机库+中心终点,几何可靠;不是传统十字盘——要十字以后再说)。掷骰子按钮+多子可走时高亮点选+pending「等待…」。preview 逐项验过(开局/lobby/棋盘渲染/move 高亮/点击 pending)。
 - **传输改造**:ChatRoom 从单一 UNO 监听改成**按 tag 分流**:`UNO_TAG`(=`UNO`)/`LUDO_TAG`(=`LUDO`) 各自独立监听集 + sendUno/subscribeUno + sendLudo/subscribeLudo;`routeIncoming` 泛型 dispatch 按前缀分发。`gameOpen` 布尔改 `openGame:"uno"|"ludo"|null`(互斥),头部加 🎲 按钮。**UNO 线路 wire 格式没动、回归验过仍正常**。下个游戏(斗地主)照此再加一路。
 
+## 2026-06-22：骗子酒馆 + 游戏帧传输大改（v0.3.3–v0.3.6，已发版）
+- **第三个游戏「骗子酒馆」**(说谎者扑克)：引擎 `chat/liar.ts` + `components/LiarGame.tsx`，沿用房主权威那套。`LIAR_TAG`=`LIAR`(UNO=、Ludo=、骗子= 错开)。盖牌诈唬+喊骗子+俄罗斯轮盘(递增命中)。
+- **关键架构教训——游戏同步帧绝不能走持久化聊天通道**：UNO/骗子都有**房主每 3s 心跳**广播 state。早期(≤0.3.3)游戏帧全走 `sendText`→insert 进 messages 表→①几局下来几千行垃圾把 `history(50)` 占满,真聊天被挤出看不到;②主窗后台未读通知器([[App.tsx]] 199–222 `b.onMessage`)把游戏帧当新消息→**藏窗也每 3s 闪任务栏**。
+- **最终方案(v0.3.6)**：①所有游戏帧(含 lobby/join/state/action)**一律走 `backend.sendGame` 实时广播(Supabase `broadcast` event:"g",config self:true 让自己也回显;customBackend 没实现就回退 sendText)、绝不落库**;②晚到/重连靠**房主心跳补齐**——对局中重广播 state、**大厅阶段每 3s 重广播 lobby**(UNO/Liar 扩心跳、Ludo 新增心跳;否则广播没历史回放→`别人加入不了`,这是 0.3.4 踩的回归);③**两处** routeIncoming 都要按控制字符前缀(`body.charCodeAt(0)<0x08`)过滤游戏帧:ChatWindow 消息流 + **App.tsx 未读通知器**(只改前者→任务栏照闪,0.3.6 才补上后者)。
+- **退出真退出**：三游戏各加 `leftGids` Set,reset 时记下 gid,handle 的 **state 和 lobby 两个分支**都要查 leftGids(只挡 state→接管者重广播 lobby 仍把你拉回,0.3.5 补 lobby 分支)。
+- 关联:[[release-process]] 房主权威「更新后没新内容」先查房主那台版本;App.tsx 裸 NUL 已于本次顺手修掉(见 [[app-tsx-null-byte]])。
+
 ## 坑
 - 改 `.env.local` / Cargo.toml / capability / lib.rs 必须等 dev **重编重启**才生效；本会话多次遇到 **tauri dev 的 Rust watcher 在 app 异常退出(0xffffffff)后停摆**(只剩 vite 热更前端)，表现为 lib.rs 改了没重编——靠 kill vite(1420)+nobi+cargo 后 `npm run tauri dev` 干净重启解决。
 - 选头像/emoji 前用户须在 Supabase 跑 `alter table public.messages add column if not exists avatar text;`，否则带 avatar 的 insert 会失败。

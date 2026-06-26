@@ -1,6 +1,6 @@
 ---
 name: app-tsx-null-byte
-description: src/App.tsx 第194行嵌了个裸 NUL 字节(0x00)→git 当二进制、Grep 需 -a；待清(用户暂缓改)
+description: 【已解决 v0.3.6】src/App.tsx 曾嵌裸 NUL(0x00)→git/Grep 当二进制；已换成 \0 转义,文件恢复纯文本
 metadata: 
   node_type: memory
   type: project
@@ -22,4 +22,4 @@ metadata:
 
 **安全修法（零行为变化）**：把裸 NUL 换成 `\0` 转义——`=> \`${pid}\0${room}\``。JS 运行期生成的字符串字节完全一致，不用迁移、不影响已有数据，只是让源码回归纯文本，git diff / 搜索恢复正常。
 
-**状态**：2026-06-18 发现（做金库模式时），已跟用户讲清，**用户明确暂时不改、只记着**。非本会话功能引入，是历史遗留。
+**状态**：2026-06-18 发现，**2026-06-22 已修复（v0.3.6）**——查任务栏闪烁 bug 时因为这个 NUL 让 Grep 一直搜不到 App.tsx 的通知器代码、绕了一圈,顺手按字节把裸 0x00 换成了 `\0`（`Buffer.from([0x5c,0x30])` 精确替换,模板串里运行期仍是同一个 NUL,零行为改变）。App.tsx 现已是纯文本,git diff / Grep 正常,**不再需要 `-a`**。

@@ -1953,6 +1953,7 @@ function App() {
             ensurePanel("audio", "音频编辑");
           },
         },
+        { label: "🧚 Winky（转 Codex/Claude 干活）", action: () => void api.openPetWindow() },
         { sep: true },
         { label: "重置布局", action: resetLayout },
       ],

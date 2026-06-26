@@ -10,6 +10,7 @@
 //! - collections 合集（手攒的具名素材集合；画板可存回库）
 //! - collect   浏览器采集（本地 HTTP 服务 + 扩展导出）
 
+mod agent;
 mod ai;
 mod backup;
 mod board;
@@ -58,6 +59,73 @@ fn open_chat_launcher(app: &tauri::AppHandle) {
             .inner_size(340.0, 420.0)
             .resizable(true);
         // 隐藏建窗 → 打 WS_EX_TOOLWINDOW → 显示：便签不进 Alt+Tab/任务栏（含悬停预览）
+        #[cfg(windows)]
+        {
+            b = b.visible(false);
+        }
+        if let Ok(win) = b.build() {
+            #[cfg(windows)]
+            {
+                hide_from_alt_tab(&win);
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }
+    });
+}
+
+/// Winky「开机自动出现」开关存盘路径（winky_prefs.json）。
+fn winky_prefs_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("winky_prefs.json"))
+}
+
+/// 读 Winky 是否「开机自动出现」（前端设置回显 + 启动时判断）。
+#[tauri::command]
+fn winky_get_autoshow(app: tauri::AppHandle) -> bool {
+    winky_prefs_path(&app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("autoshow").and_then(|x| x.as_bool()))
+        .unwrap_or(false)
+}
+
+/// 设 Winky「开机自动出现」（需 Nobi 本身已开机自启才会在开机时出现）。
+#[tauri::command]
+fn winky_set_autoshow(app: tauri::AppHandle, on: bool) {
+    if let Some(p) = winky_prefs_path(&app) {
+        if let Some(d) = p.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        let _ = std::fs::write(p, serde_json::json!({ "autoshow": on }).to_string());
+    }
+}
+
+/// 打开（或聚焦）桌宠助手窗——无边框/透明/置顶的小浮窗，浮在桌面上。
+/// 前端 #pet 路由渲染 PetWindow；它再调 agent_* 命令驱动 codex/claude。
+#[tauri::command]
+fn open_pet_window(app: tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("pet") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        use tauri::{WebviewUrl, WebviewWindowBuilder};
+        let mut b = WebviewWindowBuilder::new(&app, "pet", WebviewUrl::App("index.html#pet".into()))
+            .title("Winky")
+            .inner_size(76.0, 76.0) // 默认折叠成小图标；前端点开后 setSize 放大成聊天窗
+            .min_inner_size(64.0, 64.0)
+            .decorations(false)
+            // 本机 WebView2 透明窗有 layered-alpha 坑(见 3D/便签记录)，先用不透明窗稳妥
+            .transparent(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(true);
         #[cfg(windows)]
         {
             b = b.visible(false);
@@ -1600,6 +1668,7 @@ pub fn run() {
         .plugin(tauri_plugin_drag::init())
         .manage(watch::WatchState(std::sync::Mutex::new(None)))
         .manage(mcp_api::McpSearch::default())
+        .manage(agent::AgentState::default())
         .setup(|app| {
             collect::start_collect_server(app.handle().clone());
             selection_translate::start(app.handle().clone());
@@ -1618,6 +1687,11 @@ pub fn run() {
             // 桌面工具热键（取色/参考窗穿透）自定义键——必须在下面 register 之前读回
             #[cfg(desktop)]
             load_tool_keys(app.handle());
+
+            // Winky 桌宠：若开了「开机自动出现」，启动即弹出小图标浮窗
+            if winky_get_autoshow(app.handle().clone()) {
+                open_pet_window(app.handle().clone());
+            }
 
             // 开机自启插件（Windows 走 HKCU Run 项，无需管理员）
             #[cfg(desktop)]
@@ -2171,6 +2245,13 @@ pub fn run() {
             collect::export_mcp_script,
             // mcp（前端回填语义搜索结果）
             mcp_api::mcp_search_result,
+            // 桌宠 Agent 中转（codex/claude CLI）
+            agent::agent_check,
+            agent::agent_run,
+            agent::agent_cancel,
+            open_pet_window,
+            winky_get_autoshow,
+            winky_set_autoshow,
             // 看球直开窗（Rust 侧建窗，记住几何）
             web_open_direct,
             web_set_search_engine,

@@ -30,7 +30,7 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 - **数据**：`%APPDATA%\com.nobi.app\nobi.sqlite`；素材原位索引不复制原图；所有"删除"只清库记录与缩略图，**绝不动用户原文件**
 - **更新签名密钥**：`C:\Users\huobingli\.tauri\nobi-updater.key`（已加密；**密码在用户的备忘录里，问用户要，不在任何仓库/文档中**）。公钥在 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`
 - **CI Secrets**（已配置）：`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，供 `.github/workflows/release.yml` 云端签名
-- **MCP**：应用运行时在 `127.0.0.1:21420/api/*` 提供本地接口；stdio 桥为 `scripts/nobi-mcp.mjs`，项目级注册在 `.mcp.json`（10 个工具：检索/打标/相似/上画板等）
+- **MCP**：应用运行时在 `127.0.0.1:21420/api/*` 提供本地接口；stdio 桥为 `scripts/nobi-mcp.mjs`，项目级注册在 `.mcp.json`（**18 个工具**：status/list_assets/get_asset/similar/**search(语义/以图搜图)**/tag/set_tags/rename_tag/delete_tag/list_tags/set_favorite/remove/import_folder/list_collections/create_collection/add_to_collection/list_boards/add_to_board）。**search 特殊**：CLIP 文本向量在前端算，`/api/search` 发 `mcp-search` 事件→前端 `clipSearch`→`mcp_search_result` 命令经 mpsc 回填（20s 超时，要求主窗开着）；采集服务器单线程，搜索阻塞期间其它 /api 排队
 - **AI Provider**：OpenAI 兼容三件套（设置面板），默认本地 Ollama；**必须用支持图片输入的视觉模型**（DeepSeek 官方 API 纯文本不可用）
 
 ## 聊天子系统（2026-06-15 加，已并入 main）
@@ -93,6 +93,28 @@ node scripts/release.mjs 0.x.y   # 一键发版（改版本号→提交→打 ta
 
 ### v0.2.15 修正（隐身打标记时机）
 **v0.2.13/0.2.14 的隐身在发布版首开仍露馅**：根因是「建窗后**立刻**打 `WS_EX_TOOLWINDOW`」太早——窗口的任务栏/Alt+Tab 注册还没建好，标记不生效（老板键有效是因为对**已存在**的窗操作）。**修法**：把核心逻辑抽成 `hide_hwnd_from_alt_tab(hwnd)`，在 `on_window_event` 的 **`Focused(true)`** 里给 `web-d*` / 聊天窗(`is_chat_label`)打标记——此时窗已完全实体化，跟老板键同样有效时机，每次获焦幂等补打。这才是首开能可靠隐身的关键。
+
+## v0.3–v0.4 增改（素材库实用功能 + 音频 + MCP 扩 + Winky 桌宠）
+
+- **金库模式（v0.3.0）**：锁定态下主菜单/托盘/首选项都不出现浏览窗/便签入口（老板翻不到），连点品牌区版本号 5 下解锁；故意不持久化（重启回锁定）。`lib.rs` `VAULT_UNLOCKED`/`vault_get`/`vault_set`/`build_tray_menu`
+- **素材库实用批（v0.4.0）**：① **拖出到外部应用**（`tauri-plugin-drag` 原生 OLE，卡片 `draggable`+`onDragStart`→`api.dragOutFiles`，多选整批）② **库备份/迁移**（`backup.rs` `export_library`/`import_library`，数据库+缩略图整包，**不含原图**；文件菜单入口）③ **组合筛选**（筛选重构为 `scope`(互斥) + `conds[]`(AND 叠加)，见 `types.ts` Scope/Cond）④ **智能文件夹**（存 localStorage `nobi-smart-folders-v1`，不随库备份迁移）⑤ **自动后台建 CLIP 索引**（`App.tsx` `autoBuildIndex`+`indexingRef`，导入/启动后补缺向量，语义检索免手动）⑥ 复制图片到剪贴板（位图）⑦ 键盘翻图 ⑧ 按元数据筛选（format/orient/big 作为 Cond）⑨ **标签管理**（`library.rs` `rename_tag`/`delete_tag`，`TagManagerModal.tsx`）
+- **音频编辑面板（v0.4.1–0.4.3）**：dock 面板 `audio`（与画板/文档同级），`src/audio/dsp.ts` 纯 Web Audio + 自写 WAV/FFT + `@breezystack/lamejs` 导 MP3（未用 ffmpeg.wasm）。裁剪/增益/淡变/反转/EQ/压缩/混响/回声/变速/录音/频谱/导出/另存入库。音频素材右键或窗口菜单进入。**没做**：多轨/降噪/消人声/插件/变速不变调
+
+### Winky 桌宠（Agent 中转，v0.4.x）—— Codex/Claude 接手关键
+
+**它是什么**：嵌进 Nobi 的置顶浮窗（label `pet`，`#pet` 路由 `PetWindow.tsx`），用户说人话 → 起 **codex/claude CLI 子进程**真去干活 → 流式回显。**壳子很薄，干活的是被调的 CLI。**
+
+- **后端** `src-tauri/src/agent.rs`：`agent_check(agent,bin)` 跑 `--version` 探测；`agent_run(opts)` 起子进程、两线程流式读 stdout/stderr→emit `agent-output{stream,line}`、独立线程 wait→emit `agent-done{code}`；`agent_cancel` 按 pid 杀（taskkill /T /F）。`AgentState{pid:Mutex<Option<u32>>}` managed，一次只跑一个。
+- **调用命令**：codex 走 `codex exec --json --sandbox <level> "<prompt>"`（`--json` 出 JSONL 事件，前端只挑 `agent_message` 显示、过程折叠）；claude 走 `claude -p "<prompt>"`（权限映射待细化）。**Windows 经 `cmd /C` 调**（npm 全局是 `codex.cmd`，CreateProcess 找不到 .cmd）。**子进程 stdin 设 `Stdio::null()`**（codex exec 会读 stdin，GUI 进程不喂 EOF 会卡）。
+- **权限三档**（设置里切）→ codex `--sandbox read-only|workspace-write|danger-full-access`。
+- **前提**：用户机器要装 `npm i -g @openai/codex` + `codex login`（或 `OPENAI_API_KEY`）；没装 `agent_check` 报错、气泡提示。
+- **窗口**：折叠态 76×76 小图标（点击 `setSize` 放大成 360×480 聊天窗，「—」收回）；`open_pet_window` 命令（仿 `open_chat_launcher` 隐藏建窗→show，`transparent(false)` 避本机 layered-alpha 坑）；`pet-window.json` capability。
+- **开机出现**：`winky_get/set_autoshow`（存 `winky_prefs.json`），`setup` 里若开启则启动即 `open_pet_window`；**需 Nobi 本身已开机自启**才在开机时出现。
+- **与 MCP 联动**：Winky 起的 codex/claude 可调上面的 nobi MCP（`nobi_search` 等）反过来操作素材库——`生成/管理` 闭环的入口。
+
+## 发版（与 docs/RELEASE.md；实际走手动 bump+tag，别用 release.mjs）
+
+单提交 bump **两处**版本号（`package.json` + `src-tauri/tauri.conf.json`）+ `CHANGELOG.md` 顶部加 `## v版本号` 条目（CI 自动取该条目作 Release 说明）；推 main 后打 `vX.Y.Z` tag 并推 tag → `.github/workflows/release.yml` 在云端构建签名发布。**不需要本地打包、不需要签名密码（CI secrets 已配）**。
 
 ## 已知的坑
 
