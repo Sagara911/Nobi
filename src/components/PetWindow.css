@@ -2,28 +2,30 @@
 html.pet-window,
 body.pet-window,
 body.pet-window #root {
-  background: #16161a;
+  background: transparent;
   margin: 0;
   height: 100%;
   overflow: hidden;
 }
 
 /* 折叠态小图标：填满 76×76 的小窗，点击展开，可拖动 */
+.winky-logo { width: 100%; height: 100%; display: block; }
+/* 执行中 … 三点轮流呼吸；空闲 _ 光标闪烁 */
+.winky-dots circle { animation: winky-dot 1s ease-in-out infinite; }
+.winky-dots circle:nth-child(2) { animation-delay: 0.16s; }
+.winky-dots circle:nth-child(3) { animation-delay: 0.32s; }
+@keyframes winky-dot { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+.winky-cursor { animation: winky-blink 1.1s step-end infinite; }
+@keyframes winky-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
 .winky-bubble {
   height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 34px;
   cursor: pointer;
   user-select: none;
-  background: radial-gradient(circle at 50% 40%, #2a2a30, #16161a);
-  border-radius: 50%;
-  border: 1px solid rgba(227, 176, 75, 0.5);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
-.winky-bubble:hover { border-color: #e3b04b; }
-.winky-bubble.busy { animation: winky-spin 1.2s linear infinite; }
+.winky-bubble:hover { transform: scale(1.06); }
 @keyframes winky-spin { to { transform: rotate(360deg); } }
 
 .pet {
@@ -37,6 +39,18 @@ body.pet-window #root {
   overflow: hidden;
   font-size: 13px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  /* 窗口本身逐帧长大(rAF)，内容只做淡入，避免叠加缩放 */
+  animation: pet-open 0.16s ease-out;
+}
+@keyframes pet-open {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* 消息逐条轻微上浮淡入 */
+.pet-msg, .pet-sysline, .pet-steps { animation: pet-msg-in 0.18s ease-out; }
+@keyframes pet-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .pet-head {
@@ -49,8 +63,15 @@ body.pet-window #root {
   cursor: move;
   user-select: none;
 }
-.pet-face { font-size: 18px; }
-.pet-title { flex: 1; font-weight: 600; }
+.pet-face {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+.pet-face.busy { animation: winky-spin 1.2s linear infinite; }
+.pet-titlewrap { flex: 1; display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.pet-title { font-weight: 600; font-size: 13px; }
+.pet-sub { font-size: 11px; color: #8a8a90; }
 .pet-x {
   background: none;
   border: none;
@@ -102,12 +123,63 @@ body.pet-window #root {
   flex-direction: column;
   gap: 6px;
 }
-.pet-empty { color: #6b6b72; text-align: center; margin: auto; line-height: 1.7; }
-.pet-line { white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
-.pet-user { color: #e3b04b; }
-.pet-out { color: #cfcfd4; }
-.pet-err { color: #e06a5a; }
-.pet-running { color: #e3b04b; font-size: 12px; padding-top: 4px; }
+/* 空状态：头像 + 问候 + 建议气泡 */
+.pet-empty {
+  margin: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px;
+  width: 100%;
+}
+.pet-empty-face { width: 60px; height: 60px; }
+.pet-empty-hi { font-size: 15px; font-weight: 600; color: #ececee; }
+.pet-empty-sub { font-size: 12px; color: #8a8a90; }
+.pet-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; width: 100%; }
+.pet-chip {
+  background: #212124;
+  color: #cfcfd4;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.pet-chip:hover { border-color: #e3b04b; color: #ececee; }
+.pet-chip:disabled { opacity: 0.5; cursor: default; }
+
+/* 消息气泡 */
+.pet-msg { display: flex; gap: 8px; align-items: flex-end; max-width: 100%; }
+.pet-msg-user { justify-content: flex-end; }
+.pet-msg-bot { justify-content: flex-start; }
+.pet-msg-ava {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+.pet-bubble {
+  max-width: 78%;
+  padding: 8px 11px;
+  border-radius: 14px;
+  background: #25252b;
+  color: #e7e7ea;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  font-size: 13px;
+}
+.pet-msg-bot .pet-bubble { border-bottom-left-radius: 4px; }
+.pet-bubble-user { background: #e3b04b; color: #1a1a1a; border-bottom-right-radius: 4px; }
+.pet-bubble-err { background: #3a1f1d; color: #f0a89c; }
+.pet-typing { color: #8a8a90; }
+.pet-sysline { text-align: center; color: #6b6b72; font-size: 11px; margin: 2px 0; }
 
 /* 过程折叠块：右侧小箭头，默认收起 */
 .pet-steps { margin: 2px 0; }
@@ -139,35 +211,48 @@ body.pet-window #root {
   word-break: break-word;
   line-height: 1.4;
 }
-.pet-sys { color: #6b6b72; text-align: center; font-size: 11px; }
-
 .pet-input {
-  display: flex;
-  gap: 6px;
-  padding: 8px;
+  padding: 8px 10px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: #1d1d22;
 }
-.pet-input textarea {
+.pet-input-pill {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  background: #212124;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 4px 4px 4px 12px;
+}
+.pet-input-pill:focus-within { border-color: rgba(227, 176, 75, 0.6); }
+.pet-input-pill textarea {
   flex: 1;
   resize: none;
-  height: 38px;
-  background: #212124;
+  height: 22px;
+  max-height: 96px;
+  background: none;
   color: #ececee;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 8px;
+  border: none;
+  outline: none;
+  padding: 6px 0;
   font-size: 13px;
   font-family: inherit;
+  line-height: 1.4;
 }
 .pet-send {
-  align-self: stretch;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   background: #e3b04b;
   color: #1a1a1a;
   border: none;
-  border-radius: 8px;
-  padding: 0 14px;
-  font-weight: 600;
   cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.pet-send:disabled { background: #3a3a40; color: #6b6b72; cursor: default; }
 .pet-send.danger { background: #e06a5a; color: #fff; }

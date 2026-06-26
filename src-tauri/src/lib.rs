@@ -118,14 +118,14 @@ fn open_pet_window(app: tauri::AppHandle) {
         use tauri::{WebviewUrl, WebviewWindowBuilder};
         let mut b = WebviewWindowBuilder::new(&app, "pet", WebviewUrl::App("index.html#pet".into()))
             .title("Winky")
-            .inner_size(76.0, 76.0) // 默认折叠成小图标；前端点开后 setSize 放大成聊天窗
-            .min_inner_size(64.0, 64.0)
+            .inner_size(60.0, 60.0) // 默认折叠成小图标；前端点开后 setSize 放大成聊天窗
+            .min_inner_size(48.0, 48.0)
             .decorations(false)
-            // 本机 WebView2 透明窗有 layered-alpha 坑(见 3D/便签记录)，先用不透明窗稳妥
-            .transparent(false)
+            .transparent(true) // 透明窗：折叠态只露圆形图标，不露方形窗底（参考窗同款，本机可用）
+            .shadow(false) // 去掉系统窗口投影
             .always_on_top(true)
             .skip_taskbar(true)
-            .resizable(true);
+            .resizable(false); // 折叠图标态不可缩放（前端展开聊天窗时再开 setResizable）
         #[cfg(windows)]
         {
             b = b.visible(false);
