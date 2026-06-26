@@ -226,5 +226,9 @@ export const saveDoc = (id: number, name: string, content: string) =>
 export const loadDoc = (id: number) => invoke<string | null>("load_doc", { id });
 
 // ---- 采集 / 接入 ----
+// MCP 语义搜索回填：前端算完 CLIP 检索结果交回给等待中的 /api/search 请求
+export const mcpSearchResult = (id: number, ids: number[]) =>
+  invoke<void>("mcp_search_result", { id, ids });
+
 export const exportExtension = () => invoke<string>("export_extension");
 export const exportMcpScript = () => invoke<string>("export_mcp_script");

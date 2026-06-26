@@ -1599,6 +1599,7 @@ pub fn run() {
         // 素材拖出到外部应用（PS/资源管理器等）——原生 OLE 拖放，与 WebView2 合成层无关
         .plugin(tauri_plugin_drag::init())
         .manage(watch::WatchState(std::sync::Mutex::new(None)))
+        .manage(mcp_api::McpSearch::default())
         .setup(|app| {
             collect::start_collect_server(app.handle().clone());
             selection_translate::start(app.handle().clone());
@@ -2168,6 +2169,8 @@ pub fn run() {
             // collect
             collect::export_extension,
             collect::export_mcp_script,
+            // mcp（前端回填语义搜索结果）
+            mcp_api::mcp_search_result,
             // 看球直开窗（Rust 侧建窗，记住几何）
             web_open_direct,
             web_set_search_engine,

@@ -87,6 +87,62 @@ server.tool(
 );
 
 server.tool(
+  "nobi_search",
+  "语义搜图：用一句大白话/描述搜库里最贴近的素材（CLIP，AI 理解语义，不止匹配文件名）。返回素材 id 列表。需要 Nobi 主窗开着（向量在前端计算），且素材已建 CLIP 索引。",
+  { query: z.string().min(1).describe("自然语言描述，如「夜晚赛博朋克街道」"), top: z.number().int().min(1).max(50).optional() },
+  async (a) => text(await api(`/api/search?query=${encodeURIComponent(a.query)}&top=${a.top ?? 20}`))
+);
+
+server.tool(
+  "nobi_list_tags",
+  "列出库里所有标签及各自的素材数（按字母序）。用来了解有哪些标签、做整理前的盘点。",
+  {},
+  async () => text(await api("/api/tags"))
+);
+
+server.tool(
+  "nobi_set_tags",
+  "覆盖设置某素材的完整标签列表（传入的数组即最终标签，原有的被替换）。",
+  { id: z.number().int(), tags: z.array(z.string()) },
+  async (a) => text(await api("/api/tags/set", { method: "POST", body: JSON.stringify(a) }))
+);
+
+server.tool(
+  "nobi_rename_tag",
+  "全库重命名标签 from→to；若 to 已存在即等于合并（去重）。返回受影响的素材数。",
+  { from: z.string().min(1), to: z.string().min(1) },
+  async (a) => text(await api("/api/tag/rename", { method: "POST", body: JSON.stringify(a) }))
+);
+
+server.tool(
+  "nobi_delete_tag",
+  "全库删除某标签（只去掉标签，不删素材）。返回受影响的素材数。",
+  { name: z.string().min(1) },
+  async (a) => text(await api("/api/tag/delete", { method: "POST", body: JSON.stringify(a) }))
+);
+
+server.tool(
+  "nobi_list_collections",
+  "列出全部合集（手攒的具名素材集合）：id / 名称 / 成员数 / 创建时间。",
+  {},
+  async () => text(await api("/api/collections"))
+);
+
+server.tool(
+  "nobi_create_collection",
+  "新建合集并放入初始成员，返回新合集 id。",
+  { name: z.string().min(1), ids: z.array(z.number().int()).optional() },
+  async (a) => text(await api("/api/collection/create", { method: "POST", body: JSON.stringify({ name: a.name, ids: a.ids ?? [] }) }))
+);
+
+server.tool(
+  "nobi_add_to_collection",
+  "把一批素材加入已有合集（去重），返回新增数量。",
+  { id: z.number().int(), ids: z.array(z.number().int()).min(1) },
+  async (a) => text(await api("/api/collection/add", { method: "POST", body: JSON.stringify(a) }))
+);
+
+server.tool(
   "nobi_tag_assets",
   "给一批素材追加同一个标签（已有该标签的跳过）。",
   { ids: z.array(z.number().int()).min(1), tag: z.string().min(1) },

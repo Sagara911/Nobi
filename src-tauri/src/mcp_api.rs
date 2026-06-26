@@ -2,9 +2,34 @@
 //! 供 scripts/nobi-mcp.mjs（stdio MCP 桥）转发给 Claude Code / Codex 等智能体。
 //! 只监听回环地址；写操作均复用既有命令逻辑，不绕过任何业务规则。
 
-use tauri::Emitter;
+use std::collections::HashMap;
+use std::sync::mpsc::Sender;
+use std::sync::Mutex;
+
+use tauri::{Emitter, Manager};
 
 use crate::db::{fetch_assets, open_db};
+
+/// 等待前端回填 CLIP 搜索结果的挂起请求表（语义/以图搜图：向量由前端 transformers.js 算）。
+#[derive(Default)]
+pub struct McpSearch {
+    pub pending: Mutex<HashMap<u64, Sender<Vec<i64>>>>,
+}
+static SEARCH_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// 前端算完语义搜索结果后回填给等待中的 /api/search 请求。
+#[tauri::command]
+pub fn mcp_search_result(app: tauri::AppHandle, id: u64, ids: Vec<i64>) {
+    if let Some(tx) = app
+        .state::<McpSearch>()
+        .pending
+        .lock()
+        .ok()
+        .and_then(|mut m| m.remove(&id))
+    {
+        let _ = tx.send(ids);
+    }
+}
 
 /// 解析 URL 查询串（极简：不做 url-decode 之外的处理，参数值需 encodeURIComponent）
 fn query_params(url: &str) -> std::collections::HashMap<String, String> {
@@ -229,6 +254,135 @@ pub fn handle_api(app: &tauri::AppHandle, method: &str, url: &str, body: &str) -
                 req,
             )) {
                 Ok(result) => json_ok(serde_json::json!({ "ok": true, "result": result })),
+                Err(e) => json_err(500, &e),
+            }
+        }
+
+        ("GET", "/api/search") => {
+            // 语义 / 以图搜图：CLIP 向量在前端算，这里发事件给前端、阻塞等回填（带超时）。
+            let query = match q.get("query") {
+                Some(s) if !s.trim().is_empty() => s.clone(),
+                _ => return json_err(400, "missing query"),
+            };
+            let top: usize = q.get("top").and_then(|s| s.parse().ok()).unwrap_or(20);
+            let id = SEARCH_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let (tx, rx) = std::sync::mpsc::channel::<Vec<i64>>();
+            if let Ok(mut m) = app.state::<McpSearch>().pending.lock() {
+                m.insert(id, tx);
+            }
+            if app
+                .emit("mcp-search", serde_json::json!({ "id": id, "query": query, "top": top }))
+                .is_err()
+            {
+                let _ = app.state::<McpSearch>().pending.lock().map(|mut m| m.remove(&id));
+                return json_err(500, "emit failed");
+            }
+            match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+                Ok(ids) => json_ok(serde_json::json!({ "ok": true, "ids": ids })),
+                Err(_) => {
+                    let _ = app.state::<McpSearch>().pending.lock().map(|mut m| m.remove(&id));
+                    json_err(504, "搜索超时——请确认 Nobi 主窗开着（语义搜索的向量在前端计算）")
+                }
+            }
+        }
+
+        ("GET", "/api/tags") => {
+            let conn = match open_db(app) {
+                Ok(c) => c,
+                Err(e) => return json_err(500, &e),
+            };
+            let all = match fetch_assets(&conn) {
+                Ok(a) => a,
+                Err(e) => return json_err(500, &e),
+            };
+            let mut counts: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+            for a in &all {
+                for t in &a.tags {
+                    *counts.entry(t.clone()).or_insert(0) += 1;
+                }
+            }
+            let tags: Vec<_> = counts
+                .into_iter()
+                .map(|(name, count)| serde_json::json!({ "name": name, "count": count }))
+                .collect();
+            json_ok(serde_json::json!({ "ok": true, "tags": tags }))
+        }
+
+        ("POST", "/api/tags/set") => {
+            let id = match parsed["id"].as_i64() {
+                Some(i) => i,
+                None => return json_err(400, "missing id"),
+            };
+            let tags: Vec<String> = parsed["tags"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            match crate::library::set_tags(app.clone(), id, tags) {
+                Ok(_) => {
+                    let _ = app.emit("library-changed", ());
+                    json_ok(serde_json::json!({ "ok": true }))
+                }
+                Err(e) => json_err(500, &e),
+            }
+        }
+
+        ("POST", "/api/tag/rename") => {
+            let from = parsed["from"].as_str().unwrap_or("").to_string();
+            let to = parsed["to"].as_str().unwrap_or("").to_string();
+            match crate::library::rename_tag(app.clone(), from, to) {
+                Ok(n) => {
+                    let _ = app.emit("library-changed", ());
+                    json_ok(serde_json::json!({ "ok": true, "changed": n }))
+                }
+                Err(e) => json_err(500, &e),
+            }
+        }
+
+        ("POST", "/api/tag/delete") => {
+            let name = parsed["name"].as_str().unwrap_or("").to_string();
+            match crate::library::delete_tag(app.clone(), name) {
+                Ok(n) => {
+                    let _ = app.emit("library-changed", ());
+                    json_ok(serde_json::json!({ "ok": true, "changed": n }))
+                }
+                Err(e) => json_err(500, &e),
+            }
+        }
+
+        ("GET", "/api/collections") => match crate::collections::list_collections(app.clone()) {
+            Ok(c) => json_ok(serde_json::json!({ "ok": true, "collections": c })),
+            Err(e) => json_err(500, &e),
+        },
+
+        ("POST", "/api/collection/create") => {
+            let name = parsed["name"].as_str().unwrap_or("").to_string();
+            let ids: Vec<i64> = parsed["ids"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
+                .unwrap_or_default();
+            match crate::collections::create_collection(app.clone(), name, ids) {
+                Ok(id) => {
+                    let _ = app.emit("library-changed", ());
+                    json_ok(serde_json::json!({ "ok": true, "id": id }))
+                }
+                Err(e) => json_err(500, &e),
+            }
+        }
+
+        ("POST", "/api/collection/add") => {
+            let id = match parsed["id"].as_i64() {
+                Some(i) => i,
+                None => return json_err(400, "missing id"),
+            };
+            let ids: Vec<i64> = parsed["ids"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
+                .unwrap_or_default();
+            match crate::collections::add_to_collection(app.clone(), id, ids) {
+                Ok(n) => {
+                    let _ = app.emit("library-changed", ());
+                    json_ok(serde_json::json!({ "ok": true, "added": n }))
+                }
                 Err(e) => json_err(500, &e),
             }
         }

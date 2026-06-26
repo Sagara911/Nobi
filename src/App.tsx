@@ -511,6 +511,21 @@ function App() {
     };
   }, [reload]);
 
+  // MCP 语义/以图搜图：后端发来查询，前端用 CLIP 算向量、检索，回填结果
+  useEffect(() => {
+    const un = listen<{ id: number; query: string; top: number }>("mcp-search", async (e) => {
+      const { id, query, top } = e.payload;
+      try {
+        const ids = await api.clipSearch(await textVector(query), top || 20);
+        await api.mcpSearchResult(id, ids);
+        setStatus(`MCP：语义搜索「${query}」→ ${ids.length} 个结果`);
+      } catch {
+        await api.mcpSearchResult(id, []);
+      }
+    });
+    return () => void un.then((f) => f());
+  }, []);
+
   useEffect(() => {
     const un = listen<{ done: number; total: number }>("thumb-progress", (e) => {
       const p = e.payload;
