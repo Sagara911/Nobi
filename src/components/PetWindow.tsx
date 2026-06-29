@@ -399,6 +399,11 @@ const FIDGETS: SpriteState[] = ["jumping", "done", "review"];
 
 // ===== 自言自语（桌宠自己冒话）=====
 const CHATTER_PREFS = "nobi-winky-chatter-v1";
+const SPEAKINT_PREFS = "nobi-winky-speakmin-v1"; // 说话间隔（分钟）
+function loadSpeakMin(): number {
+  const n = Number(localStorage.getItem(SPEAKINT_PREFS));
+  return n >= 0.5 && n <= 120 ? n : 6;
+}
 const BUBBLE_W = 180; // 气泡区逻辑宽
 const BUBBLE_H = 56; // 气泡区逻辑高
 const BUBBLE_GAP = 4; // 气泡与图标间距
@@ -413,13 +418,21 @@ const PET_LINES_ANY = [
   "久坐啦，起来走两步",
   "我有点饿了…",
   "盯——看到你摸鱼了 :)",
+  "别太拼，命要紧呀",
+  "摸我一下，给你充会儿电⚡",
+  "我又开始数桌面图标了…",
+  "你今天很努力，我看见了",
+  "嘘——我在偷偷守着你",
+  "卡住了？深呼吸，没事的",
+  "腰也直一直，肩也松一松",
+  "要不要一起发会儿呆？",
 ];
 const PET_LINES_BYTIME: { test: (h: number) => boolean; lines: string[] }[] = [
-  { test: (h) => h >= 5 && h < 11, lines: ["早上好呀～", "新的一天，冲鸭！", "吃早饭了吗？"] },
-  { test: (h) => h >= 11 && h < 14, lines: ["该吃午饭啦", "饿了…一起恰饭？", "中午眯一会儿吧"] },
-  { test: (h) => h >= 14 && h < 18, lines: ["下午茶时间到～", "犯困了就动一动", "进度还顺利吗？"] },
-  { test: (h) => h >= 18 && h < 23, lines: ["忙一天辛苦啦", "晚饭吃了没？", "放松一下嘛"] },
-  { test: (h) => h >= 23 || h < 5, lines: ["还不睡吗？", "夜深啦，早点歇", "熬夜伤身哦"] },
+  { test: (h) => h >= 5 && h < 11, lines: ["早上好呀～", "新的一天，冲鸭！", "吃早饭了吗？", "起床气还没消？抱抱", "今天宜搞事情"] },
+  { test: (h) => h >= 11 && h < 14, lines: ["该吃午饭啦", "饿了…一起恰饭？", "中午眯一会儿吧", "干饭人，干饭魂！", "别对着屏幕啃饭啦"] },
+  { test: (h) => h >= 14 && h < 18, lines: ["下午茶时间到～", "犯困了就动一动", "进度还顺利吗？", "三点几啦，饮茶先", "眼睛酸了看看远处"] },
+  { test: (h) => h >= 18 && h < 23, lines: ["忙一天辛苦啦", "晚饭吃了没？", "放松一下嘛", "下班了吗？没的话也别太晚", "今天辛苦你了哦"] },
+  { test: (h) => h >= 23 || h < 5, lines: ["还不睡吗？", "夜深啦，早点歇", "熬夜伤身哦", "再刷十分钟就睡？我信你(不)", "做个好梦，明天见"] },
 ];
 function pickLocalLine(hour: number): string {
   const bucket = PET_LINES_BYTIME.find((b) => b.test(hour))?.lines || [];
@@ -427,17 +440,21 @@ function pickLocalLine(hour: number): string {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 const DEFAULT_FRAME_MS = 180; // 每帧默认时长（ms）≈5.5fps，贴近 Petdex 官方节奏
+type SpriteBox = { x: number; y: number; w: number; h: number }; // 角色在一帧内的非透明有效框（帧坐标）
 // 精灵动画：按 phase 选行，在该行帧数内循环，JS 定时器逐帧切背景。frameMs 由速度设置传入
+// box 给定时，按"非透明有效框"缩放居中填满 size（去掉透明边，角色更饱满、气泡/贴边无空白）
 function PetSprite({
   url,
   phase,
   size,
   frameMs = DEFAULT_FRAME_MS,
+  box,
 }: {
   url: string;
   phase: SpriteState;
   size: number;
   frameMs?: number;
+  box?: SpriteBox | null;
 }) {
   const [col, setCol] = useState(0);
   const { row, frames } = PHASE_ROW[phase] || PHASE_ROW.idle;
@@ -446,7 +463,32 @@ function PetSprite({
     const t = setInterval(() => setCol((c) => (c + 1) % frames), frameMs);
     return () => clearInterval(t);
   }, [phase, frames, frameMs]);
-  const f = size / FRAME_H; // 按高度把一帧适配进 size 方框
+
+  if (box && box.w > 0 && box.h > 0) {
+    // 把 bbox 按较长边缩放进 size 方框、居中；视口=size×size，溢出裁掉
+    const f = size / Math.max(box.w, box.h);
+    const sheetW = SHEET_COLS * FRAME_W * f;
+    const sheetH = SHEET_ROWS * FRAME_H * f;
+    const offX = (size - box.w * f) / 2;
+    const offY = (size - box.h * f) / 2;
+    const bgX = offX - (col * FRAME_W + box.x) * f;
+    const bgY = offY - (row * FRAME_H + box.y) * f;
+    return (
+      <div
+        className="pet-sprite"
+        style={{
+          width: size,
+          height: size,
+          overflow: "hidden",
+          backgroundImage: `url(${url})`,
+          backgroundSize: `${sheetW}px ${sheetH}px`,
+          backgroundPosition: `${bgX}px ${bgY}px`,
+        }}
+      />
+    );
+  }
+  // 没算出 bbox：退回"整帧按高度适配"
+  const f = size / FRAME_H;
   const w = Math.round(FRAME_W * f);
   const h = Math.round(FRAME_H * f);
   return (
@@ -490,6 +532,8 @@ export default function PetWindow() {
   const prePosRef = useRef<{ x: number; y: number } | null>(null); // 放大前的图标位置，用完还原
   const speakTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const collapsedRef = useRef(true); // 给定时器读当前折叠态
+  const chatterErrRef = useRef(false); // 自言自语 API 失败只记一次，别刷屏
+  const [speakMin, setSpeakMin] = useState<number>(loadSpeakMin); // 说话间隔（分钟）
   const petSizeRef = useRef(petSize); // 给几何函数读当前值，避开闭包陈旧
   const [dragging, setDragging] = useState(false); // 拖动中（图标态切走路动作）
   const [dragDir, setDragDir] = useState<"left" | "right">("right"); // 拖动方向→朝向
@@ -498,6 +542,8 @@ export default function PetWindow() {
   const phaseRef = useRef<WinkyPhase>("idle"); // 给定时器读当前 phase/dragging，避开闭包陈旧
   const draggingRef = useRef(false);
   const [skinUrl, setSkinUrl] = useState(""); // 解析出的 spritesheet URL（空=用默认终端脸）
+  const [spriteBox, setSpriteBox] = useState<SpriteBox | null>(null); // 当前皮肤的非透明有效框
+  const boxCacheRef = useRef<Record<string, SpriteBox>>({}); // 按 url 缓存 bbox，只算一次
   const [customPets, setCustomPets] = useState<api.PetInfo[]>([]); // 用户自己装的宠物
   const [petSlug, setPetSlug] = useState(""); // 设置里直接装宠物：输入名字
   const [installing, setInstalling] = useState(false);
@@ -621,6 +667,71 @@ export default function PetWindow() {
       alive = false;
     };
   }, [skin]);
+  // 算当前皮肤的"非透明有效框"(扫 idle 行几帧并集)，缓存；用于去透明边、填满图标
+  useEffect(() => {
+    if (!skinUrl) {
+      setSpriteBox(null);
+      return;
+    }
+    const cached = boxCacheRef.current[skinUrl];
+    if (cached) {
+      setSpriteBox(cached);
+      return;
+    }
+    let alive = true;
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const fw = Math.round(img.naturalWidth / SHEET_COLS);
+        const fh = Math.round(img.naturalHeight / SHEET_ROWS);
+        if (!fw || !fh) return;
+        const cv = document.createElement("canvas");
+        cv.width = fw;
+        cv.height = fh;
+        const ctx = cv.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
+        let minX = fw,
+          minY = fh,
+          maxX = 0,
+          maxY = 0,
+          found = false;
+        for (let c = 0; c < PHASE_ROW.idle.frames; c++) {
+          ctx.clearRect(0, 0, fw, fh);
+          ctx.drawImage(img, c * fw, 0, fw, fh, 0, 0, fw, fh); // idle 行第 c 帧
+          const d = ctx.getImageData(0, 0, fw, fh).data;
+          for (let y = 0; y < fh; y++) {
+            for (let x = 0; x < fw; x++) {
+              if (d[(y * fw + x) * 4 + 3] > 16) {
+                found = true;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+            }
+          }
+        }
+        if (!found) return;
+        const pad = 2;
+        const x = Math.max(0, minX - pad);
+        const y = Math.max(0, minY - pad);
+        const box: SpriteBox = {
+          x,
+          y,
+          w: Math.min(fw, maxX + pad) - x,
+          h: Math.min(fh, maxY + pad) - y,
+        };
+        boxCacheRef.current[skinUrl] = box;
+        if (alive) setSpriteBox(box);
+      } catch {
+        /* 读像素失败(极少)：不裁，退回整帧 */
+      }
+    };
+    img.src = skinUrl;
+    return () => {
+      alive = false;
+    };
+  }, [skinUrl]);
   // 列出用户已装的宠物（皮肤选择器用）
   useEffect(() => {
     api.winkyListPets().then(setCustomPets).catch(() => {});
@@ -684,8 +795,9 @@ export default function PetWindow() {
     if (!collapsed || !chatter) return;
     let t: ReturnType<typeof setTimeout>;
     const schedule = (first: boolean) => {
-      // 首句 25–45s 就来(打个招呼/也方便看到效果)，之后 4–8 分钟一句
-      const delay = first ? 25000 + Math.random() * 20000 : 240000 + Math.random() * 240000;
+      // 首句 25–45s 就来(打个招呼/也方便看到效果)，之后按设置的间隔(±25% 抖动)
+      const base = speakMin * 60000;
+      const delay = first ? 25000 + Math.random() * 20000 : base * (0.75 + Math.random() * 0.5);
       t = setTimeout(() => {
         void maybeChatter();
         schedule(false);
@@ -694,7 +806,7 @@ export default function PetWindow() {
     schedule(true);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collapsed, chatter]);
+  }, [collapsed, chatter, speakMin]);
   // 待机随机小动作：折叠态 + 有皮肤时，每隔 8–18s 趁空闲随机蹦一下/挥手/审阅，播一轮回 idle
   useEffect(() => {
     if (!skinUrl || !collapsed) return;
@@ -1168,6 +1280,11 @@ export default function PetWindow() {
     localStorage.setItem(SPEED_PREFS, String(v));
     setFps(v);
   };
+  const changeSpeakMin = (n: number) => {
+    const v = Math.max(0.5, Math.min(120, n));
+    localStorage.setItem(SPEAKINT_PREFS, String(v));
+    setSpeakMin(v);
+  };
   // 标题栏手动拖动：data-tauri-drag-region 在本机 WebView2 不稳，改成 mousedown 直接 startDragging（和图标同款）。
   // 点在按钮/下拉/输入这些交互件上不触发拖动。
   const onHeadDown = (e: React.MouseEvent) => {
@@ -1380,8 +1497,12 @@ export default function PetWindow() {
           ],
         });
         if (t) line = t.replace(/^[\s"'「『]+|[\s"'」』]+$/g, "").slice(0, 30);
-      } catch {
-        /* 回落本地词池 */
+      } catch (e) {
+        // 回落本地词池；并把失败原因记一条(只记首次)，方便展开后排查为啥没用 API
+        if (!chatterErrRef.current) {
+          chatterErrRef.current = true;
+          setLog((l) => [...l, { role: "err", text: `自言自语调 API 失败(已回落本地词)：${String(e)}` }]);
+        }
       }
     }
     void speakNow(line);
@@ -1516,7 +1637,7 @@ export default function PetWindow() {
         : "walk-right"
       : fidget ?? phase;
     const iconNode = skinUrl ? (
-      <PetSprite url={skinUrl} phase={iconPhase} size={petSize - 2} frameMs={frameMs} />
+      <PetSprite url={skinUrl} phase={iconPhase} size={petSize - 2} frameMs={frameMs} box={spriteBox} />
     ) : (
       <WinkyLogo className="winky-logo" phase={phase} />
     );
@@ -1584,7 +1705,7 @@ export default function PetWindow() {
       <div className="pet-head" onMouseDown={onHeadDown}>
         <span className="pet-face">
           {skinUrl ? (
-            <PetSprite url={skinUrl} phase={fidget ?? phase} size={26} frameMs={frameMs} />
+            <PetSprite url={skinUrl} phase={fidget ?? phase} size={26} frameMs={frameMs} box={spriteBox} />
           ) : (
             <WinkyLogo className="winky-logo" phase={phase} />
           )}
@@ -1745,7 +1866,7 @@ export default function PetWindow() {
             <>
               <div className="pet-skin-preview">
                 {skinUrl ? (
-                  <PetSprite url={skinUrl} phase={phase} size={84} frameMs={frameMs} />
+                  <PetSprite url={skinUrl} phase={phase} size={84} frameMs={frameMs} box={spriteBox} />
                 ) : (
                   <WinkyLogo className="winky-logo" phase={phase} />
                 )}
@@ -1806,8 +1927,23 @@ export default function PetWindow() {
                     localStorage.setItem(CHATTER_PREFS, e.target.checked ? "1" : "0");
                   }}
                 />
-                自言自语（每隔几分钟自己冒句话，混本地词+偶尔 API 现编）
+                自言自语（每隔一会儿自己冒句话；配了 API 按风格现编，否则用本地词）
               </label>
+              {chatter && (
+                <label className="pet-cfg-row">
+                  说话间隔
+                  <input
+                    className="pet-size-num"
+                    type="number"
+                    min={0.5}
+                    max={120}
+                    step={0.5}
+                    value={speakMin}
+                    onChange={(e) => changeSpeakMin(+e.target.value)}
+                  />
+                  <span className="pet-size-val">分钟</span>
+                </label>
+              )}
               <label className="pet-cfg-row">
                 皮肤
                 <select
@@ -1945,7 +2081,7 @@ export default function PetWindow() {
         {log.length === 0 && (
           <div className="pet-empty">
             <div className="pet-empty-face">
-              {skinUrl ? <PetSprite url={skinUrl} phase={phase} size={68} frameMs={frameMs} /> : <WinkyLogo className="winky-logo" />}
+              {skinUrl ? <PetSprite url={skinUrl} phase={phase} size={68} frameMs={frameMs} box={spriteBox} /> : <WinkyLogo className="winky-logo" />}
             </div>
             <div className="pet-empty-hi">我是 Winky</div>
             <div className="pet-empty-sub">
