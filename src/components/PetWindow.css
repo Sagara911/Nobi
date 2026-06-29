@@ -24,8 +24,13 @@ body.pet-window #root {
   justify-content: center;
   cursor: pointer;
   user-select: none;
+  animation: winky-in 0.18s ease-out; /* 收起时图标淡入+轻弹，与聊天淡出衔接成交叉淡化 */
 }
 .winky-bubble:hover { transform: scale(1.06); }
+@keyframes winky-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
 @keyframes winky-spin { to { transform: rotate(360deg); } }
 
 .pet {
@@ -41,11 +46,14 @@ body.pet-window #root {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
   /* 窗口本身逐帧长大(rAF)，内容只做淡入，避免叠加缩放 */
   animation: pet-open 0.16s ease-out;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 @keyframes pet-open {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+/* 收起过渡：卡片朝图标角缩小+淡出（CSS transform，GPU，圆角完好，不动窗口尺寸→无直角 artifact） */
+.pet.closing { opacity: 0; transform: scale(0.2); }
 /* 消息逐条轻微上浮淡入 */
 .pet-msg, .pet-sysline, .pet-steps { animation: pet-msg-in 0.18s ease-out; }
 @keyframes pet-msg-in {
