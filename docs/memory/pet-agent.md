@@ -57,3 +57,5 @@ metadata:
 **校验**：tsc 0+cargo clean(仅 3 预存 Manager 警告)。**真机**：本会话边做边验——文字聊天(DeepSeek)、皮肤切/动画/走路/缩放/速度、在线装/删宠物都过；看图需视觉 Key、文件/联网/查库待多验。**坑**：旧 nobi.exe 残留→新命令"not found"(在跑旧二进制)→清干净重编;在线装宠物需本机 Node。
 
 **v0.5.1**：服务商预置加 Gemini(`generativelanguage.googleapis.com/v1beta/openai`)/火山方舟/硅基流动/Grok/OpenRouter(Claude 走 OpenRouter，Anthropic 原生非 OpenAI 格式不直连)；**摸宠**=折叠图标 onMouseEnter 触发挥手/蹦(带 1.5s 冷却，不和单击展开/拖动冲突)；修折叠图标 `:hover scale(1.06)` 导致的放大缩小抖动死循环(精灵填满透明窗，放大超界→光标落透明区→hover 丢失→循环)，去掉 hover 放大 + 去掉 title tooltip。
+
+**v0.5.2**：① 自言自语——折叠态每 4–8 分钟(首句 25–45s)自己冒气泡说话；新增 `chat_once`(非流式 Rust 命令，不污染聊天记录)；气泡靠把透明小窗一次性放大出气泡区(图标锚定、朝屏内、4.8s 缩回，避开逐帧 resize 圆角坑)；完全风格化——配了 API 每句按绑定风格现编、没 API 回落本地词池。② **聊天技能 vs 自言自语风格彻底两套池子**：skills(聊天人设，🧩技能页选/编/增删，含 web/lib 工具绑定)；styles(自言自语口吻，🐾风格页，内置软萌/毒舌/元气，独立增删改)；styles 按宠物 id 绑(`nobi-winky-petskill-v1`，现存 styleId)，切宠物只换长相+自言自语口吻、**不动聊天技能**。③ 标题栏技能下拉移进技能页(去掉 pet-persona-sel)。④ Winky 随 Nobi 自启默认开(winky_get_autoshow 默认 true)。⑤ 修提示词 textarea 被外层面板 wheel 接管→嵌套滚动(滚到头才传给面板)。⑥ 窗口菜单「音频编辑」「Winky」去表情去括号。⑦ 一个 API：技能/风格都只是提示词，全走当前选中的 API 配置。皮肤标签改名「风格」。

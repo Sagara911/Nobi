@@ -676,3 +676,38 @@ pub fn winky_delete_pet(id: String) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// 一次性生成一句话（非流式，不经 chat-delta，避免污染聊天记录）。桌宠"自言自语"用。
+#[tauri::command]
+pub async fn chat_once(opts: ChatOpts) -> Result<String, String> {
+    if opts.api_key.trim().is_empty() || opts.base_url.trim().is_empty() {
+        return Err("没配 API".into());
+    }
+    let url = chat_url(&opts.base_url);
+    let body = serde_json::json!({
+        "model": opts.model,
+        "stream": false,
+        "max_tokens": 60,
+        "messages": opts.messages,
+    });
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(opts.api_key.trim())
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("连接失败：{e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("API 返回 {}", resp.status()));
+    }
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let text = v["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return Err("空回复".into());
+    }
+    Ok(text)
+}

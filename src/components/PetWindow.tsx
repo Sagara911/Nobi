@@ -39,6 +39,16 @@ function loadFps(): number {
   const n = Number(localStorage.getItem(SPEED_PREFS));
   return n >= 2 && n <= 30 ? n : 6;
 }
+// 每只宠物绑一个技能（选中该宠物时自动切到它的技能）：按宠物 id 记 skillId
+const PETSKILL_PREFS = "nobi-winky-petskill-v1";
+function loadPetSkills(): Record<string, string> {
+  try {
+    const o = JSON.parse(localStorage.getItem(PETSKILL_PREFS) || "{}");
+    return o && typeof o === "object" ? o : {};
+  } catch {
+    return {};
+  }
+}
 // 有的宠物作者把"向左/向右跑"两行画反了 → 按宠物 id 记一个"镜像左右"开关
 const FLIP_PREFS = "nobi-winky-flip-v1";
 function loadFlips(): Record<string, boolean> {
@@ -116,9 +126,23 @@ const BUILTIN_SKILLS: Skill[] = [
   { id: "asset", name: "找素材", builtin: true, lib: true, prompt: "你帮我在 Nobi 素材库里找东西：根据匹配到的素材列表，告诉我有哪些、并简要描述。" },
 ];
 
+// 自言自语「风格」：独立于聊天技能的一套池子，只管桌宠自己冒话的口吻，绑到宠物上。
+type PetStyle = { id: string; name: string; prompt: string };
+const BUILTIN_STYLES: PetStyle[] = [
+  { id: "cute", name: "软萌", prompt: "你是只软萌可爱的桌宠，说话奶声奶气、爱撒娇，自称'我'。" },
+  { id: "snarky", name: "毒舌", prompt: "你是只嘴欠又可爱的桌宠，爱吐槽、调侃主人摸鱼，但不刻薄、点到为止。" },
+  { id: "genki", name: "元气", prompt: "你是只元气满满的桌宠，热情、爱鼓励主人，语气活泼常带感叹号。" },
+];
+
 // 一套 API 配置（OpenAI 兼容）。可存多套、随时在设置里切换。
 type ApiProfile = { id: string; name: string; baseUrl: string; apiKey: string; model: string };
-type ChatCfg = { profiles: ApiProfile[]; activeId: string; skills: Skill[]; activeSkillId: string };
+type ChatCfg = {
+  profiles: ApiProfile[];
+  activeId: string;
+  skills: Skill[];
+  activeSkillId: string;
+  styles: PetStyle[]; // 自言自语风格池（独立于 skills）
+};
 const CHAT_PRESETS: { label: string; baseUrl: string }[] = [
   { label: "OpenAI", baseUrl: "https://api.openai.com/v1" },
   { label: "Gemini（谷歌）", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai" },
@@ -159,10 +183,16 @@ function loadSkills(p: { skills?: Partial<Skill>[]; persona?: string }): { skill
   const activeSkillId = skills.some((s) => s.id === wantId) ? wantId : skills[0]?.id || "assistant";
   return { skills, activeSkillId };
 }
+function loadStyles(p: { styles?: Partial<PetStyle>[] }): PetStyle[] {
+  return Array.isArray(p.styles)
+    ? p.styles.map((x) => ({ id: x.id || newId(), name: x.name || "风格", prompt: x.prompt || "" }))
+    : BUILTIN_STYLES.map((s) => ({ ...s }));
+}
 function loadChatCfg(): ChatCfg {
   try {
     const p = JSON.parse(localStorage.getItem(CHAT_PREFS) || "{}");
     const { skills, activeSkillId } = loadSkills(p);
+    const styles = loadStyles(p);
     // 新结构：多套配置
     if (Array.isArray(p.profiles) && p.profiles.length) {
       const profiles: ApiProfile[] = p.profiles.map((x: Partial<ApiProfile>) => ({
@@ -173,7 +203,7 @@ function loadChatCfg(): ChatCfg {
         model: x.model || "",
       }));
       const activeId = profiles.some((x) => x.id === p.activeId) ? p.activeId : profiles[0].id;
-      return { profiles, activeId, skills, activeSkillId };
+      return { profiles, activeId, skills, activeSkillId, styles };
     }
     // 旧的单套配置 → 迁移成一套
     const first: ApiProfile = {
@@ -183,10 +213,16 @@ function loadChatCfg(): ChatCfg {
       apiKey: p.apiKey || "",
       model: p.model || "",
     };
-    return { profiles: [first], activeId: first.id, skills, activeSkillId };
+    return { profiles: [first], activeId: first.id, skills, activeSkillId, styles };
   } catch {
     const first = blankProfile("默认");
-    return { profiles: [first], activeId: first.id, skills: BUILTIN_SKILLS.map((s) => ({ ...s })), activeSkillId: "assistant" };
+    return {
+      profiles: [first],
+      activeId: first.id,
+      skills: BUILTIN_SKILLS.map((s) => ({ ...s })),
+      activeSkillId: "assistant",
+      styles: BUILTIN_STYLES.map((s) => ({ ...s })),
+    };
   }
 }
 
@@ -360,6 +396,36 @@ const PHASE_ROW: Record<SpriteState, { row: number; frames: number }> = {
 };
 // 待机时随机穿插的小动作（让桌面那只活起来）；failed 留给真出错时用
 const FIDGETS: SpriteState[] = ["jumping", "done", "review"];
+
+// ===== 自言自语（桌宠自己冒话）=====
+const CHATTER_PREFS = "nobi-winky-chatter-v1";
+const BUBBLE_W = 180; // 气泡区逻辑宽
+const BUBBLE_H = 56; // 气泡区逻辑高
+const BUBBLE_GAP = 4; // 气泡与图标间距
+const PET_LINES_ANY = [
+  "在忙啥呢？",
+  "摸摸我嘛～",
+  "记得喝口水哦",
+  "我在这儿陪你～",
+  "有点无聊…陪我玩会儿？",
+  "需要帮忙就点开我",
+  "今天也要加油鸭！",
+  "久坐啦，起来走两步",
+  "我有点饿了…",
+  "盯——看到你摸鱼了 :)",
+];
+const PET_LINES_BYTIME: { test: (h: number) => boolean; lines: string[] }[] = [
+  { test: (h) => h >= 5 && h < 11, lines: ["早上好呀～", "新的一天，冲鸭！", "吃早饭了吗？"] },
+  { test: (h) => h >= 11 && h < 14, lines: ["该吃午饭啦", "饿了…一起恰饭？", "中午眯一会儿吧"] },
+  { test: (h) => h >= 14 && h < 18, lines: ["下午茶时间到～", "犯困了就动一动", "进度还顺利吗？"] },
+  { test: (h) => h >= 18 && h < 23, lines: ["忙一天辛苦啦", "晚饭吃了没？", "放松一下嘛"] },
+  { test: (h) => h >= 23 || h < 5, lines: ["还不睡吗？", "夜深啦，早点歇", "熬夜伤身哦"] },
+];
+function pickLocalLine(hour: number): string {
+  const bucket = PET_LINES_BYTIME.find((b) => b.test(hour))?.lines || [];
+  const pool = [...bucket, ...PET_LINES_ANY];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 const DEFAULT_FRAME_MS = 180; // 每帧默认时长（ms）≈5.5fps，贴近 Petdex 官方节奏
 // 精灵动画：按 phase 选行，在该行帧数内循环，JS 定时器逐帧切背景。frameMs 由速度设置传入
 function PetSprite({
@@ -414,8 +480,16 @@ export default function PetWindow() {
   const [lib, setLib] = useState(false); // 查素材库开关：开了每次发送先在 Nobi 库里搜一下
   const [skin, setSkin] = useState<SkinSel>(loadSkin); // 皮肤选择
   const [flips, setFlips] = useState<Record<string, boolean>>(loadFlips); // 各宠物"镜像左右"开关
+  const [petSkills, setPetSkills] = useState<Record<string, string>>(loadPetSkills); // 各宠物绑定的技能
   const [petSize, setPetSize] = useState<number>(loadPetSize); // 折叠图标大小（逻辑像素）
   const [fps, setFps] = useState<number>(loadFps); // 动画帧速
+  const [chatter, setChatter] = useState<boolean>(() => localStorage.getItem(CHATTER_PREFS) !== "0"); // 自言自语开关
+  const [speech, setSpeech] = useState<string | null>(null); // 当前冒的话
+  const [speakDir, setSpeakDir] = useState("up right"); // 气泡相对图标方向（up/down + left/right）
+  const speakingRef = useRef(false); // 冒话中（窗口被放大）：守住吸附/拖动别捣乱
+  const prePosRef = useRef<{ x: number; y: number } | null>(null); // 放大前的图标位置，用完还原
+  const speakTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const collapsedRef = useRef(true); // 给定时器读当前折叠态
   const petSizeRef = useRef(petSize); // 给几何函数读当前值，避开闭包陈旧
   const [dragging, setDragging] = useState(false); // 拖动中（图标态切走路动作）
   const [dragDir, setDragDir] = useState<"left" | "right">("right"); // 拖动方向→朝向
@@ -442,6 +516,18 @@ export default function PetWindow() {
       if (!el) return () => {};
       const onWheel = (e: WheelEvent) => {
         e.preventDefault();
+        // 滚轮若在能自己滚的内部元素(如提示词 textarea)上、且没滚到头 → 滚它，别滚外层面板
+        const inner = (e.target as HTMLElement)?.closest?.(
+          "textarea, .pet-skill-prompt",
+        ) as HTMLElement | null;
+        if (inner && inner !== el && inner.scrollHeight > inner.clientHeight) {
+          const atTop = inner.scrollTop <= 0;
+          const atBottom = inner.scrollTop + inner.clientHeight >= inner.scrollHeight - 1;
+          if (!((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) {
+            inner.scrollTop += e.deltaY;
+            return;
+          }
+        }
         el.scrollTop += e.deltaY;
       };
       el.addEventListener("wheel", onWheel, { passive: false });
@@ -539,9 +625,39 @@ export default function PetWindow() {
   useEffect(() => {
     api.winkyListPets().then(setCustomPets).catch(() => {});
   }, []);
+  const petIdOf = (s: SkinSel) => (s.kind === "default" ? "default" : s.id);
   const chooseSkin = (s: SkinSel) => {
     localStorage.setItem(SKIN_PREFS, JSON.stringify(s));
     setSkin(s);
+    // 注意：切宠物只换长相 + 自言自语风格，不动你聊天用的技能（两者独立）
+  };
+  // 自言自语风格池（独立于聊天技能），按宠物绑定
+  const curPetId = petIdOf(skin);
+  const curStyleId = petSkills[curPetId] || "";
+  const curStyle = chatCfg.styles.find((s) => s.id === curStyleId);
+  const persistPetSkills = (next: Record<string, string>) => {
+    localStorage.setItem(PETSKILL_PREFS, JSON.stringify(next));
+    setPetSkills(next);
+  };
+  const bindPetStyle = (styleId: string) => {
+    const next = { ...petSkills };
+    if (styleId) next[curPetId] = styleId;
+    else delete next[curPetId];
+    persistPetSkills(next);
+  };
+  const addStyle = () => {
+    const ns: PetStyle = { id: newId(), name: `风格 ${chatCfg.styles.length + 1}`, prompt: "" };
+    persistChat({ ...chatCfg, styles: [...chatCfg.styles, ns] });
+    persistPetSkills({ ...petSkills, [curPetId]: ns.id }); // 新建即绑到当前宠物
+  };
+  const updateStyle = (id: string, patch: Partial<PetStyle>) =>
+    persistChat({ ...chatCfg, styles: chatCfg.styles.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
+  const deleteStyle = (id: string) => {
+    persistChat({ ...chatCfg, styles: chatCfg.styles.filter((s) => s.id !== id) });
+    // 解绑所有指向它的宠物
+    const next = { ...petSkills };
+    for (const k of Object.keys(next)) if (next[k] === id) delete next[k];
+    persistPetSkills(next);
   };
   // 当前宠物是否需要镜像左右
   const flipped = !!(skin.id && flips[skin.id]);
@@ -560,6 +676,25 @@ export default function PetWindow() {
   useEffect(() => {
     draggingRef.current = dragging;
   }, [dragging]);
+  useEffect(() => {
+    collapsedRef.current = collapsed;
+  }, [collapsed]);
+  // 自言自语定时器：折叠 + 开关开 时，每 4–8 分钟趁空闲冒一句
+  useEffect(() => {
+    if (!collapsed || !chatter) return;
+    let t: ReturnType<typeof setTimeout>;
+    const schedule = (first: boolean) => {
+      // 首句 25–45s 就来(打个招呼/也方便看到效果)，之后 4–8 分钟一句
+      const delay = first ? 25000 + Math.random() * 20000 : 240000 + Math.random() * 240000;
+      t = setTimeout(() => {
+        void maybeChatter();
+        schedule(false);
+      }, delay);
+    };
+    schedule(true);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsed, chatter]);
   // 待机随机小动作：折叠态 + 有皮肤时，每隔 8–18s 趁空闲随机蹦一下/挥手/审阅，播一轮回 idle
   useEffect(() => {
     if (!skinUrl || !collapsed) return;
@@ -1175,13 +1310,90 @@ export default function PetWindow() {
     }, 1500);
   };
 
+  // 冒话结束：缩回图标大小、还原位置
+  const dismissSpeech = async () => {
+    clearTimeout(speakTimerRef.current);
+    setSpeech(null);
+    try {
+      await win.setSize(new LogicalSize(petSizeRef.current, petSizeRef.current));
+      if (prePosRef.current) await win.setPosition(new PhysicalPosition(prePosRef.current.x, prePosRef.current.y));
+    } catch {
+      /* ignore */
+    }
+    speakingRef.current = false;
+  };
+  // 冒一句话：把折叠窗临时放大出气泡区(图标锚定不动、朝屏幕内侧展开)，几秒后缩回
+  const speakNow = async (text: string) => {
+    if (!collapsedRef.current || speakingRef.current) return;
+    try {
+      const pos = await win.outerPosition();
+      const mon = await monitorForPoint(pos.x, pos.y);
+      if (!mon) return;
+      const s = mon.scaleFactor;
+      const sizePx = Math.round(petSizeRef.current * s);
+      const W = Math.max(BUBBLE_W, petSizeRef.current);
+      const H = petSizeRef.current + BUBBLE_GAP + BUBBLE_H;
+      const Wpx = Math.round(W * s);
+      const Hpx = Math.round(H * s);
+      const rightSide = pos.x + sizePx / 2 > mon.position.x + mon.size.width / 2;
+      const topSide = pos.y + sizePx / 2 < mon.position.y + mon.size.height / 2;
+      setSpeakDir((topSide ? "down" : "up") + (rightSide ? " right" : " left"));
+      let nx = rightSide ? pos.x + sizePx - Wpx : pos.x;
+      let ny = topSide ? pos.y : pos.y + sizePx - Hpx;
+      nx = Math.max(mon.position.x, Math.min(nx, mon.position.x + mon.size.width - Wpx));
+      ny = Math.max(mon.position.y, Math.min(ny, mon.position.y + mon.size.height - Hpx));
+      speakingRef.current = true;
+      prePosRef.current = { x: pos.x, y: pos.y };
+      setSpeech(text);
+      await win.setSize(new LogicalSize(W, H));
+      await win.setPosition(new PhysicalPosition(nx, ny));
+      clearTimeout(speakTimerRef.current);
+      speakTimerRef.current = setTimeout(() => void dismissSpeech(), 4800);
+    } catch {
+      speakingRef.current = false;
+      setSpeech(null);
+    }
+  };
+  // 该不该冒话：折叠+空闲+没在说/拖时；用「这只宠物绑定的自言自语风格」(独立于聊天技能)
+  const maybeChatter = async () => {
+    if (!collapsedRef.current || speakingRef.current || draggingRef.current || phaseRef.current !== "idle") return;
+    // 自言自语用宠物绑定的「风格」(独立池)；没绑就用默认口吻
+    const styleSkill = chatCfg.styles.find((sk) => sk.id === petSkills[curPetId]) || {
+      prompt: "你是桌宠 Winky，住在桌面角落，俏皮、友好。",
+    };
+    // 完全风格化：配了 API 就每句都按该风格现编；没 API / 失败才回落本地词池
+    let line = pickLocalLine(new Date().getHours());
+    if (active.apiKey.trim() && active.baseUrl.trim()) {
+      try {
+        const t = await api.chatOnce({
+          baseUrl: active.baseUrl,
+          apiKey: active.apiKey,
+          model: active.model,
+          messages: [
+            {
+              role: "system",
+              content:
+                (styleSkill.prompt || "你是桌宠 Winky。") +
+                "\n\n（现在你正闲在桌面角落，没人提问。请用你以上的人设和口吻，说一句不超过15字的自言自语：打招呼、犯困、饿了、提醒主人休息、调侃主人摸鱼之类皆可。只输出这一句，别加引号或解释。）",
+            },
+            { role: "user", content: "说一句" },
+          ],
+        });
+        if (t) line = t.replace(/^[\s"'「『]+|[\s"'」』]+$/g, "").slice(0, 30);
+      } catch {
+        /* 回落本地词池 */
+      }
+    }
+    void speakNow(line);
+  };
+
   // 拖完（窗口停止移动 220ms）：靠近某条边才吸附，且平滑飘过去
   const snappingRef = useRef(false);
   useEffect(() => {
     if (!collapsed) return;
     let t: ReturnType<typeof setTimeout> | undefined;
     const unP = win.onMoved(({ payload }) => {
-      if (snappingRef.current) return; // 飘移动画自身触发的移动，忽略
+      if (snappingRef.current || speakingRef.current) return; // 飘移/冒话放大期间的移动，忽略
       setDragging(true); // 拖动中 → 切到走路动作
       const px = lastXRef.current;
       if (px != null) {
@@ -1298,6 +1510,42 @@ export default function PetWindow() {
 
   // 折叠态：只是个小图标，点开展开成聊天窗；拖动可挪位置
   if (collapsed) {
+    const iconPhase: SpriteState = dragging
+      ? (dragDir === "left") !== flipped
+        ? "walk-left"
+        : "walk-right"
+      : fidget ?? phase;
+    const iconNode = skinUrl ? (
+      <PetSprite url={skinUrl} phase={iconPhase} size={petSize - 2} frameMs={frameMs} />
+    ) : (
+      <WinkyLogo className="winky-logo" phase={phase} />
+    );
+    // 冒话中：窗口已放大，图标锚在角落 + 气泡在另一侧
+    if (speech) {
+      return (
+        <div className={"winky-speak " + speakDir}>
+          <div
+            className="winky-say"
+            title="点击展开聊天"
+            onClick={() => {
+              void dismissSpeech();
+              expand();
+            }}
+          >
+            {speech}
+          </div>
+          <div
+            className="winky-iconwrap"
+            style={{ width: petSize, height: petSize }}
+            onMouseDown={onIconDown}
+            onMouseMove={onIconMove}
+            onClick={onIconClick}
+          >
+            {iconNode}
+          </div>
+        </div>
+      );
+    }
     return (
       <div
         className={"winky-bubble" + (running ? " busy" : "")}
@@ -1306,22 +1554,7 @@ export default function PetWindow() {
         onMouseMove={onIconMove}
         onClick={onIconClick}
       >
-        {skinUrl ? (
-          <PetSprite
-            url={skinUrl}
-            phase={
-              dragging
-                ? (dragDir === "left") !== flipped
-                  ? "walk-left"
-                  : "walk-right"
-                : fidget ?? phase
-            }
-            size={petSize - 2}
-            frameMs={frameMs}
-          />
-        ) : (
-          <WinkyLogo className="winky-logo" phase={phase} />
-        )}
+        {iconNode}
       </div>
     );
   }
@@ -1359,18 +1592,6 @@ export default function PetWindow() {
         <span className="pet-titlewrap">
           <span className="pet-title">Winky</span>
         </span>
-        <select
-          className="pet-persona-sel"
-          value={chatCfg.activeSkillId}
-          onChange={(e) => switchSkill(e.target.value)}
-          title="切换技能（换提示词，顺带开它绑定的工具）"
-        >
-          {chatCfg.skills.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
         {log.length > 0 && (
           <button className="pet-x" title="新对话（清空当前）" onClick={clearChat}>🧹</button>
         )}
@@ -1390,7 +1611,7 @@ export default function PetWindow() {
               🧩 技能
             </button>
             <button className={"pet-tab" + (cfgTab === "skin" ? " on" : "")} onClick={() => setCfgTab("skin")}>
-              🐾 皮肤
+              🐾 风格
             </button>
             <button className={"pet-tab" + (cfgTab === "work" ? " on" : "")} onClick={() => setCfgTab("work")}>
               🛠 干活
@@ -1465,8 +1686,12 @@ export default function PetWindow() {
           {cfgTab === "skill" && (
             <>
               <label className="pet-cfg-row">
-                名字
-                <input value={activeSkill.name} onChange={(e) => updateSkill(activeSkill.id, { name: e.target.value })} />
+                聊天技能
+                <select value={chatCfg.activeSkillId} onChange={(e) => switchSkill(e.target.value)}>
+                  {chatCfg.skills.map((sk) => (
+                    <option key={sk.id} value={sk.id}>{sk.name}</option>
+                  ))}
+                </select>
                 <button onClick={addSkill} title="新建技能">＋</button>
                 <button
                   onClick={() => deleteSkill(activeSkill.id)}
@@ -1475,6 +1700,10 @@ export default function PetWindow() {
                 >
                   🗑
                 </button>
+              </label>
+              <label className="pet-cfg-row">
+                名字
+                <input value={activeSkill.name} onChange={(e) => updateSkill(activeSkill.id, { name: e.target.value })} />
               </label>
               <label className="pet-cfg-col">
                 提示词
@@ -1568,6 +1797,17 @@ export default function PetWindow() {
                 />
                 这只左右跑反了 → 镜像修正
               </label>
+              <label className="pet-chk">
+                <input
+                  type="checkbox"
+                  checked={chatter}
+                  onChange={(e) => {
+                    setChatter(e.target.checked);
+                    localStorage.setItem(CHATTER_PREFS, e.target.checked ? "1" : "0");
+                  }}
+                />
+                自言自语（每隔几分钟自己冒句话，混本地词+偶尔 API 现编）
+              </label>
               <label className="pet-cfg-row">
                 皮肤
                 <select
@@ -1610,6 +1850,37 @@ export default function PetWindow() {
                   🗑
                 </button>
               </label>
+              <label className="pet-cfg-row">
+                自言自语风格
+                <select value={curStyleId} onChange={(e) => bindPetStyle(e.target.value)}>
+                  <option value="">（不绑定，用默认口吻）</option>
+                  {chatCfg.styles.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <button onClick={addStyle} title="新建风格">＋</button>
+                <button onClick={() => curStyleId && deleteStyle(curStyleId)} disabled={!curStyleId} title="删除当前风格">
+                  🗑
+                </button>
+              </label>
+              {curStyle && (
+                <>
+                  <label className="pet-cfg-row">
+                    名字
+                    <input value={curStyle.name} onChange={(e) => updateStyle(curStyle.id, { name: e.target.value })} />
+                  </label>
+                  <label className="pet-cfg-col">
+                    口吻提示词
+                    <textarea
+                      className="pet-skill-prompt"
+                      value={curStyle.prompt}
+                      placeholder="描述这只宠物自言自语的口吻/性格…"
+                      onChange={(e) => updateStyle(curStyle.id, { prompt: e.target.value })}
+                    />
+                  </label>
+                </>
+              )}
+              <div className="pet-skin-hint">风格独立于聊天技能，只管这只宠物自己冒话的口吻；可在这里加/改/删</div>
               <label className="pet-cfg-row">
                 装新宠物
                 <input
@@ -1662,7 +1933,7 @@ export default function PetWindow() {
               </label>
               <label className="pet-chk">
                 <input type="checkbox" checked={autoshow} onChange={(e) => toggleAutoshow(e.target.checked)} />
-                开机自动出现（需 Nobi 已开机自启）
+                Nobi 启动时自动打开 Winky（默认开）
               </label>
               <div className="pet-status">{status}</div>
             </>

@@ -34,6 +34,42 @@ body.pet-window #root {
 }
 @keyframes winky-spin { to { transform: rotate(360deg); } }
 
+/* 自言自语：窗口临时放大，图标锚角落 + 气泡在另一侧 */
+.winky-speak { position: relative; width: 100vw; height: 100vh; }
+.winky-iconwrap {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+.winky-speak.right .winky-iconwrap { right: 0; }
+.winky-speak.left .winky-iconwrap { left: 0; }
+.winky-speak.up .winky-iconwrap { bottom: 0; }
+.winky-speak.down .winky-iconwrap { top: 0; }
+.winky-say {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  background: #fff;
+  color: #1a1a1a;
+  border-radius: 12px;
+  padding: 7px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  word-break: break-word;
+  animation: winky-say-in 0.18s ease-out;
+}
+.winky-speak.up .winky-say { top: 2px; }
+.winky-speak.down .winky-say { bottom: 2px; }
+@keyframes winky-say-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
 .pet {
   height: 100vh;
   display: flex;

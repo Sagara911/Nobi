@@ -1947,13 +1947,13 @@ function App() {
         { label: "详情", action: () => ensurePanel("inspector", "详情") },
         { sep: true },
         {
-          label: "🎵 音频编辑（裁剪/效果/录音）",
+          label: "音频编辑",
           action: () => {
             setAudioAsset(selected && isAudio(selected) ? selected : null);
             ensurePanel("audio", "音频编辑");
           },
         },
-        { label: "🧚 Winky（转 Codex/Claude 干活）", action: () => void api.openPetWindow() },
+        { label: "Winky", action: () => void api.openPetWindow() },
         { sep: true },
         { label: "重置布局", action: resetLayout },
       ],

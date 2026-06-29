@@ -261,6 +261,8 @@ export interface ChatOpts {
 }
 export const chatSend = (opts: ChatOpts) => invoke<void>("chat_send", { opts });
 export const chatCancel = () => invoke<void>("chat_cancel");
+// 一次性生成一句话（桌宠自言自语用，非流式）
+export const chatOnce = (opts: ChatOpts) => invoke<string>("chat_once", { opts });
 
 // Winky 取外部资料：读链接（抓网页正文）/ 联网搜索（无 key，DuckDuckGo）
 export const fetchUrlText = (url: string) => invoke<string>("fetch_url_text", { url });

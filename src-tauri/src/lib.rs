@@ -82,14 +82,15 @@ fn winky_prefs_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
         .map(|d| d.join("winky_prefs.json"))
 }
 
-/// 读 Winky 是否「开机自动出现」（前端设置回显 + 启动时判断）。
+/// 读 Winky 是否「Nobi 启动时自动打开」（前端设置回显 + 启动时判断）。
+/// 默认 true：一开 Nobi 就出 Winky，除非用户显式关掉。
 #[tauri::command]
 fn winky_get_autoshow(app: tauri::AppHandle) -> bool {
     winky_prefs_path(&app)
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v.get("autoshow").and_then(|x| x.as_bool()))
-        .unwrap_or(false)
+        .unwrap_or(true)
 }
 
 /// 设 Winky「开机自动出现」（需 Nobi 本身已开机自启才会在开机时出现）。
@@ -1690,7 +1691,7 @@ pub fn run() {
             #[cfg(desktop)]
             load_tool_keys(app.handle());
 
-            // Winky 桌宠：若开了「开机自动出现」，启动即弹出小图标浮窗
+            // Winky 桌宠：默认一开 Nobi 就弹出小图标浮窗（除非用户在设置里关掉）
             if winky_get_autoshow(app.handle().clone()) {
                 open_pet_window(app.handle().clone());
             }
@@ -2254,6 +2255,7 @@ pub fn run() {
             agent::agent_cancel,
             agent::chat_send,
             agent::chat_cancel,
+            agent::chat_once,
             agent::fetch_url_text,
             agent::web_search,
             agent::extract_file_text,
