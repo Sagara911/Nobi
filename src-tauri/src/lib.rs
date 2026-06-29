@@ -125,6 +125,7 @@ fn open_pet_window(app: tauri::AppHandle) {
             .shadow(false) // 去掉系统窗口投影
             .always_on_top(true)
             .skip_taskbar(true)
+            .drag_and_drop(false) // 关原生文件拖放，走 HTML5 拖放收图（看图说话）；不影响窗口本身拖动
             .resizable(false); // 折叠图标态不可缩放（前端展开聊天窗时再开 setResizable）
         #[cfg(windows)]
         {
@@ -1669,6 +1670,7 @@ pub fn run() {
         .manage(watch::WatchState(std::sync::Mutex::new(None)))
         .manage(mcp_api::McpSearch::default())
         .manage(agent::AgentState::default())
+        .manage(agent::ChatState::default())
         .setup(|app| {
             collect::start_collect_server(app.handle().clone());
             selection_translate::start(app.handle().clone());
@@ -2157,6 +2159,7 @@ pub fn run() {
             library::import_blob,
             library::count_folder_media,
             library::list_assets,
+            library::winky_search_library,
             library::check_missing,
             library::clear_assets,
             library::remove_asset,
@@ -2249,6 +2252,15 @@ pub fn run() {
             agent::agent_check,
             agent::agent_run,
             agent::agent_cancel,
+            agent::chat_send,
+            agent::chat_cancel,
+            agent::fetch_url_text,
+            agent::web_search,
+            agent::extract_file_text,
+            agent::winky_list_pets,
+            agent::winky_read_pet_sheet,
+            agent::winky_install_pet,
+            agent::winky_delete_pet,
             open_pet_window,
             winky_get_autoshow,
             winky_set_autoshow,

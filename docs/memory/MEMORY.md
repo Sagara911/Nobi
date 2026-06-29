@@ -11,7 +11,7 @@
 - [记忆可推公开仓](push-memory-to-public-repo.md) — 把记忆/设计笔记提交到 Nobi 公开仓 docs/memory 用户已接受(代码本就可见,记忆只为日后修复参考)，别再就"暴露金库模式"反复警告
 - [App.tsx 裸 NUL 隐患](app-tsx-null-byte.md) — src/App.tsx:194 嵌了真 0x00 当 chat key 分隔符→git 当二进制、Grep 需 -a；改 \0 转义即可零行为修复，用户暂缓只记着
 - [金库模式](vault-mode-plan.md) — ✅ 发版 v0.3.0：浏览窗+便签隐秘防护，锁定态下主菜单/托盘/**首选项快捷键**三处都不出现入口(老板翻 Nobi 看不到功能存在)，连点版本号5下解锁；故意不持久化(重启回锁定)+用户明确先不要 PIN+暗号选版本号连点的取舍
-- [桌宠助手(Agent中转)](pet-agent.md) — 2026-06-26 嵌进 Nobi 的置顶浮窗(label pet,非 dock),说话转 codex/claude CLI 干活;agent.rs 起子进程流式回显+pid 取消,Windows 经 cmd/C 调,权限三档映射 codex --sandbox;窗口菜单入口;**需装 codex,全未真机测**
+- [Winky 桌宠助手](pet-agent.md) — 置顶浮窗(label pet)。**v0.5.0 大改**：从"只转 CLI"升级成完整 AI 助手(API 聊天/多套配置/技能绑工具/看图/看文件/读链接/联网/查库/Markdown)+ **Petdex 动画桌宠皮肤**(内置4只+在线装/删/缩放/调速/待机小动作/按方向走路)。`/`开头才转 codex/claude CLI。新依赖 pdf-extract+zip。看图需视觉模型、在线装宠物需 Node
 - [音频编辑窗](audio-editor.md) — 2026-06-25 仿 Audacity 常用子集：主窗内全屏浮层(非独立窗,自定义命令不受 capability 限制+复用主窗权限)；src/audio/dsp.ts 纯 Web Audio+自写 WAV/FFT+lamejs MP3；裁剪/增益/淡变/反转/EQ/压缩/混响/回声/变速/录音/频谱/导出/另存入库；明确没做多轨/降噪/插件/变速不变调；**全未真机测**
 - [库可携带三件套](library-portability-features.md) — 2026-06-25：以图搜图(早已有,没重做)/拖出到外部应用(新增,tauri-plugin-drag 原生 OLE,编译过未真机拖测)/库备份迁移(新增 backup.rs,只备份 db+缩略图不含原图);第二三梯队待做项清单
 - [桌面工具四件套路线](desktop-tools-roadmap.md) — Nobi 桌面专属功能：取色器✅/参考窗升级✅/首选项改键✅；批量命名❌全局截图改 Win+Shift+S❌。另「文档+导图」编辑器线：文档(Word/TipTap)✅发 v0.2.13、**思维导图(xmind)❌ 做了又撤、用户放弃**(Chrome 全对、本机 WebView2 节点文字不显示=transform 合成层渲染坑，已回滚)

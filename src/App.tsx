@@ -2291,7 +2291,7 @@ function App() {
                 🎵 编辑音频（裁剪 / 效果 / 转码）
               </div>
             )}
-            {(isImage(ctx.asset) || isVideo(ctx.asset)) && (
+            {vaultUnlocked && (isImage(ctx.asset) || isVideo(ctx.asset)) && (
               <div
                 className="ctx-item"
                 onClick={() => {

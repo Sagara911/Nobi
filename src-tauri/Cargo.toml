@@ -33,6 +33,8 @@ imagesize = "0.13"
 image = "0.25"
 reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
+pdf-extract = "0.7" # Winky 看文件：PDF 抽文字
+zip = "2" # Winky 看文件：Office(.docx/.xlsx/.pptx) 本质是 zip，解出里面的 XML 抽文字
 tiny_http = "0.12"
 tokio = { version = "1", features = ["time"] }
 # 离线神经翻译（OPUS-MT / Marian，onnxruntime）—— 整句离线兜底，不依赖本地大模型或联网

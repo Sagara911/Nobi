@@ -250,6 +250,58 @@ pub fn list_assets(app: tauri::AppHandle) -> Result<Vec<Asset>, String> {
     fetch_assets(&conn)
 }
 
+/// Winky 查库结果（精简：够喂模型/展示即可，不带缩略图字节）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibHit {
+    pub id: i64,
+    pub name: String,
+    pub tags: Vec<String>,
+    pub caption: String,
+    pub folder: String,
+}
+
+/// Winky 查素材库：关键词在 名字/标签/说明/作者/文件夹 里 LIKE 匹配，收藏优先、按入库时间倒序，返回前 N 条（不含回收站）。
+#[tauri::command]
+pub fn winky_search_library(app: tauri::AppHandle, query: String, limit: i64) -> Result<Vec<LibHit>, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(vec![]);
+    }
+    let conn = open_db(&app)?;
+    let like = format!("%{q}%");
+    let lim = if limit <= 0 { 12 } else { limit };
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, COALESCE(tags,'[]'), COALESCE(caption,''), COALESCE(folder,'')
+             FROM assets
+             WHERE trashed_at IS NULL
+               AND (name LIKE ?1 OR tags LIKE ?1 OR caption LIKE ?1 OR author LIKE ?1 OR folder LIKE ?1)
+             ORDER BY COALESCE(favorite,0) DESC, added_at DESC
+             LIMIT ?2",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![like, lim], |row| {
+            let tags_json: String = row.get(2).unwrap_or_else(|_| "[]".to_string());
+            Ok(LibHit {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+                caption: row.get(3)?,
+                folder: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        if let Ok(h) = r {
+            out.push(h);
+        }
+    }
+    Ok(out)
+}
+
 /// 失效链接检测：返回原文件已被移动/删除的素材 id。
 /// 从加载热路径分离——大库时逐条 stat 磁盘会把首屏卡死，故前端进入后台单独跑一次。
 #[tauri::command]

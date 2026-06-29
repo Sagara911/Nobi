@@ -92,14 +92,62 @@ body.pet-window #root {
 .pet-x:hover { background: rgba(255, 255, 255, 0.08); color: #ececee; }
 .pet-x.on { color: #e3b04b; }
 
+/* 聊天区容器：设置浮层就盖在它上面（标题栏/输入条在外，照常在位） */
+.pet-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .pet-cfg {
+  /* 浮在聊天之上，而不是挤进布局把聊天顶下去 */
+  position: absolute;
+  inset: 0;
+  z-index: 10;
   padding: 8px 10px;
   background: #131316;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   gap: 6px;
   font-size: 12px;
+  overflow-y: auto;
+}
+/* 设置分页：一排平级标签按钮，点哪个显哪段 */
+.pet-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+.pet-tab {
+  flex: 1;
+  background: #212124;
+  color: #b8b8c0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 5px 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pet-tab.on {
+  background: #e3b04b;
+  color: #1a1a1a;
+  border-color: #e3b04b;
+  font-weight: 600;
+}
+/* 皮肤精灵：单帧背景，居中 */
+.pet-sprite { background-repeat: no-repeat; margin: 0 auto; }
+.pet-skin-preview { display: flex; align-items: center; justify-content: center; min-height: 90px; padding: 4px 0; }
+.pet-skin-hint { color: #8a8a90; font-size: 11px; line-height: 1.5; }
+.pet-size-val { color: #8a8a90; font-size: 11px; }
+.pet-size-num { flex: 0 0 auto; width: 52px; }
+.pet-cfg input[type="range"] { flex: 1; accent-color: #e3b04b; cursor: pointer; }
+.pet-skin-hint code {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-family: ui-monospace, Consolas, monospace;
 }
 .pet-cfg label { display: flex; align-items: center; gap: 6px; color: #98989f; }
 .pet-cfg select,
@@ -122,6 +170,35 @@ body.pet-window #root {
 }
 .pet-status { color: #98989f; font-size: 11px; word-break: break-all; }
 .pet-chk { display: flex; align-items: center; gap: 6px; color: #98989f; font-size: 12px; }
+/* 设置面板分区小标题（聊天 / 干活两段） */
+.pet-cfg-sec {
+  color: #c9c9d0;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.pet-cfg-sec:first-child { margin-top: 0; }
+/* 技能编辑：提示词多行框 + 工具勾选 */
+.pet-cfg-col { display: flex; flex-direction: column; align-items: stretch; gap: 4px; color: #98989f; }
+.pet-skill-prompt {
+  width: 100%;
+  min-height: 54px;
+  max-height: 140px;
+  resize: vertical;
+  background: #212124;
+  color: #ececee;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.pet-skill-tools { display: flex; gap: 14px; flex-wrap: wrap; }
+/* 用户气泡里「派给 CLI」的小标 */
+.pet-tag { margin-right: 4px; opacity: 0.85; }
 
 .pet-log {
   flex: 1;
@@ -225,7 +302,7 @@ body.pet-window #root {
 }
 .pet-input-pill {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   background: #212124;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -236,16 +313,17 @@ body.pet-window #root {
 .pet-input-pill textarea {
   flex: 1;
   resize: none;
-  height: 22px;
+  height: 20px;
   max-height: 96px;
   background: none;
   color: #ececee;
   border: none;
   outline: none;
-  padding: 6px 0;
+  padding: 0;
   font-size: 13px;
   font-family: inherit;
-  line-height: 1.4;
+  /* 行高=高度：单行文字在 textarea 内部就垂直居中（再靠 pill 的 align-items:center 整体居中） */
+  line-height: 20px;
 }
 .pet-send {
   flex: 0 0 auto;
@@ -264,3 +342,196 @@ body.pet-window #root {
 }
 .pet-send:disabled { background: #3a3a40; color: #6b6b72; cursor: default; }
 .pet-send.danger { background: #e06a5a; color: #fff; }
+/* 联网搜索开关：输入框左侧小圆钮，开启高亮 */
+.pet-web {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: grayscale(1) opacity(0.55);
+}
+.pet-web.on {
+  background: rgba(227, 176, 75, 0.18);
+  border-color: rgba(227, 176, 75, 0.7);
+  filter: none;
+}
+
+/* 快捷人设：折进标题栏的小下拉（一点就切，不占额外行） */
+.pet-persona-sel {
+  flex: 0 0 auto;
+  max-width: 76px;
+  background: #212124;
+  color: #d8d8de;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  margin-right: 4px;
+}
+
+/* 用户气泡里的图片 */
+.pet-bubble-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.pet-bubble-imgs img {
+  max-width: 120px;
+  max-height: 120px;
+  border-radius: 8px;
+  display: block;
+}
+
+/* 待发送图片条（输入框上方） */
+.pet-attach {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.pet-attach-item { position: relative; }
+.pet-attach-item img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: block;
+}
+.pet-attach-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2b2b2b;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 拖图悬停：整窗高亮提示可以松手 */
+.pet.dragover { outline: 2px dashed rgba(227, 176, 75, 0.8); outline-offset: -4px; }
+
+/* 待发送文件 chip（输入框上方） */
+.pet-doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  background: #212124;
+  color: #c9c9d0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 3px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pet-doc-x {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: #8a8a90;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+/* 助手回复 Markdown：保留换行 + 代码块 + 行内代码 */
+.pet-md-text { white-space: pre-wrap; }
+.pet-md-code {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+.pet-md-pre {
+  position: relative;
+  margin: 6px 0;
+  background: #0e0e11;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+.pet-md-pre pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+.pet-md-pre code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #d7d7dd;
+  white-space: pre;
+}
+.pet-md-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #c9c9d0;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 5px;
+  line-height: 1.4;
+}
+/* 助手气泡底部的复制按钮（hover 才显，不挡阅读） */
+.pet-bubble { position: relative; }
+.pet-bubble-copy {
+  position: absolute;
+  bottom: -10px;
+  right: 2px;
+  background: #212124;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #b8b8c0;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 6px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.pet-msg-bot:hover .pet-bubble-copy { opacity: 1; }
+/* 重新生成 */
+.pet-regen-row { display: flex; justify-content: center; margin: 4px 0 2px; }
+.pet-regen {
+  background: #212124;
+  color: #b8b8c0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pet-regen:hover { color: #ececee; border-color: rgba(227, 176, 75, 0.6); }
+
+/* 用户气泡里的文件名标 */
+.pet-bubble-docs { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.pet-doc-tag {
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 2px 6px;
+  word-break: break-all;
+}

@@ -242,6 +242,61 @@ export const agentCheck = (agent: string, bin: string) =>
   invoke<string>("agent_check", { agent, bin });
 export const agentRun = (opts: AgentOpts) => invoke<void>("agent_run", { opts });
 export const agentCancel = () => invoke<void>("agent_cancel");
+
+// ===== Winky API 聊天（不以 / 开头说话走这条；OpenAI 兼容流式）=====
+// 流式 token 经 "chat-delta"({text}) 事件回；chatSend 的 Promise 在整段说完后才 resolve。
+// 纯文本=字符串；看图说话=图文段数组（OpenAI vision 格式）
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+export interface ChatMsg {
+  role: "system" | "user" | "assistant";
+  content: string | ChatContentPart[];
+}
+export interface ChatOpts {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  messages: ChatMsg[];
+}
+export const chatSend = (opts: ChatOpts) => invoke<void>("chat_send", { opts });
+export const chatCancel = () => invoke<void>("chat_cancel");
+
+// Winky 取外部资料：读链接（抓网页正文）/ 联网搜索（无 key，DuckDuckGo）
+export const fetchUrlText = (url: string) => invoke<string>("fetch_url_text", { url });
+export interface SearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+}
+export const webSearch = (query: string) => invoke<SearchHit[]>("web_search", { query });
+
+// Winky 查 Nobi 素材库（关键词 LIKE 匹配 名字/标签/说明/作者/文件夹）
+export interface LibHit {
+  id: number;
+  name: string;
+  tags: string[];
+  caption: string;
+  folder: string;
+}
+export const winkySearchLibrary = (query: string, limit = 12) =>
+  invoke<LibHit[]>("winky_search_library", { query, limit });
+
+// Winky 看文件：抽 PDF/Word/Excel/PPT/纯文本 的文字。优先 path（文件选择器），否则 dataB64（拖入）
+export const extractFileText = (name: string, path: string, dataB64: string) =>
+  invoke<string>("extract_file_text", { name, path, dataB64 });
+
+// Winky 皮肤：列出用户已装的 Petdex 宠物 / 读某只的 spritesheet（自定义皮肤；内置预设走 public/pets）
+export interface PetInfo {
+  id: string;
+  displayName: string;
+  dir: string;
+}
+export const winkyListPets = () => invoke<PetInfo[]>("winky_list_pets");
+export const winkyReadPetSheet = (dir: string) => invoke<string>("winky_read_pet_sheet", { dir });
+// 在设置里直接装宠物：后台跑 npx petdex install <slug>
+export const winkyInstallPet = (slug: string) => invoke<string>("winky_install_pet", { slug });
+export const winkyDeletePet = (id: string) => invoke<void>("winky_delete_pet", { id });
 export const openPetWindow = () => invoke<void>("open_pet_window");
 export const winkyGetAutoshow = () => invoke<boolean>("winky_get_autoshow");
 export const winkySetAutoshow = (on: boolean) => invoke<void>("winky_set_autoshow", { on });
