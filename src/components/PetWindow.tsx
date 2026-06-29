@@ -121,10 +121,15 @@ type ApiProfile = { id: string; name: string; baseUrl: string; apiKey: string; m
 type ChatCfg = { profiles: ApiProfile[]; activeId: string; skills: Skill[]; activeSkillId: string };
 const CHAT_PRESETS: { label: string; baseUrl: string }[] = [
   { label: "OpenAI", baseUrl: "https://api.openai.com/v1" },
+  { label: "Gemini（谷歌）", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai" },
   { label: "DeepSeek（深度求索）", baseUrl: "https://api.deepseek.com" },
   { label: "智谱 GLM", baseUrl: "https://open.bigmodel.cn/api/paas/v4" },
   { label: "月之暗面 Kimi", baseUrl: "https://api.moonshot.cn/v1" },
   { label: "通义千问（阿里）", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  { label: "豆包 / 火山方舟", baseUrl: "https://ark.cn-beijing.volces.com/api/v3" },
+  { label: "硅基流动 SiliconFlow", baseUrl: "https://api.siliconflow.cn/v1" },
+  { label: "xAI Grok", baseUrl: "https://api.x.ai/v1" },
+  { label: "OpenRouter（聚合，含 Claude/Gemini/GPT）", baseUrl: "https://openrouter.ai/api/v1" },
 ];
 function newId(): string {
   try {
@@ -1157,6 +1162,18 @@ export default function PetWindow() {
   const onIconClick = () => {
     if (!movedRef.current) expand();
   };
+  // 摸宠：鼠标移上去就开心地挥手/蹦一下（不和单击展开/拖动冲突）。带冷却防抖动狂触发
+  const pokeCoolRef = useRef(false);
+  const pokeReact = () => {
+    if (!skinUrl || dragging || fidget || pokeCoolRef.current || phaseRef.current !== "idle") return;
+    pokeCoolRef.current = true;
+    const pick: SpriteState = Math.random() < 0.5 ? "done" : "jumping";
+    setFidget(pick);
+    setTimeout(() => setFidget((f) => (f === pick ? null : f)), loopMs(pick));
+    setTimeout(() => {
+      pokeCoolRef.current = false;
+    }, 1500);
+  };
 
   // 拖完（窗口停止移动 220ms）：靠近某条边才吸附，且平滑飘过去
   const snappingRef = useRef(false);
@@ -1284,7 +1301,7 @@ export default function PetWindow() {
     return (
       <div
         className={"winky-bubble" + (running ? " busy" : "")}
-        title="点击展开 Winky · 按住拖动可挪位置（松手吸附边缘）"
+        onMouseEnter={pokeReact}
         onMouseDown={onIconDown}
         onMouseMove={onIconMove}
         onClick={onIconClick}

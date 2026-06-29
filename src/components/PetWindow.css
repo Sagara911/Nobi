@@ -26,7 +26,8 @@ body.pet-window #root {
   user-select: none;
   animation: winky-in 0.18s ease-out; /* 收起时图标淡入+轻弹，与聊天淡出衔接成交叉淡化 */
 }
-.winky-bubble:hover { transform: scale(1.06); }
+/* 不再放大：精灵几乎填满透明窗，放大会超出被裁→光标落到透明区→hover 抖动死循环。
+   摸宠反应已改用 onMouseEnter 触发动作，不需要这个缩放了 */
 @keyframes winky-in {
   from { opacity: 0; transform: scale(0.6); }
   to { opacity: 1; transform: scale(1); }

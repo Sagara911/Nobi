@@ -55,3 +55,5 @@ metadata:
 - **行为**：折叠态待机每 5–8s 随机 fidget(跳/挥手/审阅，播完整轮回 idle、时长按帧速算)；拖动→按方向走路(起手光标 dx 定向+onMoved 修正)；出错→failed 沮丧；**每只独立"镜像左右"开关**(`nobi-winky-flip-v1` 修作者画反的，只对该 id)；**大小可调**(滑条+数字框 `nobi-winky-size-v1` 44–200，ICON→petSizeRef 几何全跟随)。
 
 **校验**：tsc 0+cargo clean(仅 3 预存 Manager 警告)。**真机**：本会话边做边验——文字聊天(DeepSeek)、皮肤切/动画/走路/缩放/速度、在线装/删宠物都过；看图需视觉 Key、文件/联网/查库待多验。**坑**：旧 nobi.exe 残留→新命令"not found"(在跑旧二进制)→清干净重编;在线装宠物需本机 Node。
+
+**v0.5.1**：服务商预置加 Gemini(`generativelanguage.googleapis.com/v1beta/openai`)/火山方舟/硅基流动/Grok/OpenRouter(Claude 走 OpenRouter，Anthropic 原生非 OpenAI 格式不直连)；**摸宠**=折叠图标 onMouseEnter 触发挥手/蹦(带 1.5s 冷却，不和单击展开/拖动冲突)；修折叠图标 `:hover scale(1.06)` 导致的放大缩小抖动死循环(精灵填满透明窗，放大超界→光标落透明区→hover 丢失→循环)，去掉 hover 放大 + 去掉 title tooltip。
