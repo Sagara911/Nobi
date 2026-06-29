@@ -113,6 +113,7 @@ export default function PetWindow() {
   const [cfg, setCfg] = useState<api.AgentOpts>(loadPrefs);
   const [showCfg, setShowCfg] = useState(false);
   const [collapsed, setCollapsed] = useState(true); // 默认折叠成小图标
+  const [closing, setClosing] = useState(false); // 收起过渡中：聊天内容淡出，盖住"硬切成图标"
   const [origin, setOrigin] = useState("100% 0%"); // 展开动画的起点角（随图标位置动态定）
   const [autoshow, setAutoshow] = useState(false); // 开机自动出现
   const [input, setInput] = useState("");
@@ -322,22 +323,26 @@ export default function PetWindow() {
 
   const collapse = async () => {
     const target = loadPos(); // 收起后回到图标上次停的位置
+    // 可见的"缩小+淡出"全用 CSS transform(GPU、圆角完好)；窗口尺寸不在此变，避开透明窗 resize 的直角 artifact
+    setClosing(true);
+    await new Promise((r) => setTimeout(r, 200)); // 等 .pet 缩放淡出跑完
     try {
-      const cur = await win.outerPosition();
-      const mon = await monitorForPoint(cur.x, cur.y);
-      const size = Math.round(ICON * (mon?.scaleFactor ?? 1));
-      const tx = target ? target.x : cur.x;
-      const ty = target ? target.y : cur.y;
-      await animateBox(tx, ty, size, size); // 平滑缩回并移到原位
+      // 此刻 .pet 已透明，窗口一步 setSize / 移位都看不见
       await win.setResizable(false);
-      setCollapsed(true);
-      if (!target) {
+      await win.setSize(new LogicalSize(ICON, ICON));
+      if (target) await win.setPosition(new PhysicalPosition(target.x, target.y));
+    } catch {
+      /* ignore */
+    }
+    setCollapsed(true); // 换成图标（自带淡入）
+    setClosing(false);
+    if (!target) {
+      try {
         const pos = await win.outerPosition();
         await snapToEdge(pos.x, pos.y, true);
+      } catch {
+        /* ignore */
       }
-    } catch {
-      await win.setSize(new LogicalSize(ICON, ICON));
-      setCollapsed(true);
     }
   };
 
@@ -487,7 +492,7 @@ export default function PetWindow() {
   }
 
   return (
-    <div className="pet" style={{ transformOrigin: origin }}>
+    <div className={"pet" + (closing ? " closing" : "")} style={{ transformOrigin: origin }}>
       <div className="pet-head" data-tauri-drag-region>
         <span className="pet-face" data-tauri-drag-region>
           <WinkyLogo className="winky-logo" phase={phase} />
