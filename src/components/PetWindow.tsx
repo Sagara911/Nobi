@@ -399,6 +399,7 @@ const FIDGETS: SpriteState[] = ["jumping", "done", "review"];
 
 // ===== 自言自语（桌宠自己冒话）=====
 const CHATTER_PREFS = "nobi-winky-chatter-v1";
+const FILLICON_PREFS = "nobi-winky-fillicon-v1"; // 去透明边填满图标（默认开；有的素材会被剪过头，可关）
 const SPEAKINT_PREFS = "nobi-winky-speakmin-v1"; // 说话间隔（分钟）
 function loadSpeakMin(): number {
   const n = Number(localStorage.getItem(SPEAKINT_PREFS));
@@ -526,6 +527,7 @@ export default function PetWindow() {
   const [petSize, setPetSize] = useState<number>(loadPetSize); // 折叠图标大小（逻辑像素）
   const [fps, setFps] = useState<number>(loadFps); // 动画帧速
   const [chatter, setChatter] = useState<boolean>(() => localStorage.getItem(CHATTER_PREFS) !== "0"); // 自言自语开关
+  const [fillIcon, setFillIcon] = useState<boolean>(() => localStorage.getItem(FILLICON_PREFS) !== "0"); // 去透明边填满图标（默认开）
   const [speech, setSpeech] = useState<string | null>(null); // 当前冒的话
   const [speakDir, setSpeakDir] = useState("up right"); // 气泡相对图标方向（up/down + left/right）
   const speakingRef = useRef(false); // 冒话中（窗口被放大）：守住吸附/拖动别捣乱
@@ -1637,7 +1639,7 @@ export default function PetWindow() {
         : "walk-right"
       : fidget ?? phase;
     const iconNode = skinUrl ? (
-      <PetSprite url={skinUrl} phase={iconPhase} size={petSize - 2} frameMs={frameMs} box={spriteBox} />
+      <PetSprite url={skinUrl} phase={iconPhase} size={petSize - 2} frameMs={frameMs} box={fillIcon ? spriteBox : null} />
     ) : (
       <WinkyLogo className="winky-logo" phase={phase} />
     );
@@ -1705,7 +1707,7 @@ export default function PetWindow() {
       <div className="pet-head" onMouseDown={onHeadDown}>
         <span className="pet-face">
           {skinUrl ? (
-            <PetSprite url={skinUrl} phase={fidget ?? phase} size={26} frameMs={frameMs} box={spriteBox} />
+            <PetSprite url={skinUrl} phase={fidget ?? phase} size={26} frameMs={frameMs} box={fillIcon ? spriteBox : null} />
           ) : (
             <WinkyLogo className="winky-logo" phase={phase} />
           )}
@@ -1866,7 +1868,7 @@ export default function PetWindow() {
             <>
               <div className="pet-skin-preview">
                 {skinUrl ? (
-                  <PetSprite url={skinUrl} phase={phase} size={84} frameMs={frameMs} box={spriteBox} />
+                  <PetSprite url={skinUrl} phase={phase} size={84} frameMs={frameMs} box={fillIcon ? spriteBox : null} />
                 ) : (
                   <WinkyLogo className="winky-logo" phase={phase} />
                 )}
@@ -1917,6 +1919,17 @@ export default function PetWindow() {
                   onChange={toggleFlip}
                 />
                 这只左右跑反了 → 镜像修正
+              </label>
+              <label className="pet-chk">
+                <input
+                  type="checkbox"
+                  checked={fillIcon}
+                  onChange={(e) => {
+                    setFillIcon(e.target.checked);
+                    localStorage.setItem(FILLICON_PREFS, e.target.checked ? "1" : "0");
+                  }}
+                />
+                去透明边、放大填满图标（关掉可修正被剪过头的素材）
               </label>
               <label className="pet-chk">
                 <input
@@ -2081,7 +2094,7 @@ export default function PetWindow() {
         {log.length === 0 && (
           <div className="pet-empty">
             <div className="pet-empty-face">
-              {skinUrl ? <PetSprite url={skinUrl} phase={phase} size={68} frameMs={frameMs} box={spriteBox} /> : <WinkyLogo className="winky-logo" />}
+              {skinUrl ? <PetSprite url={skinUrl} phase={phase} size={68} frameMs={frameMs} box={fillIcon ? spriteBox : null} /> : <WinkyLogo className="winky-logo" />}
             </div>
             <div className="pet-empty-hi">我是 Winky</div>
             <div className="pet-empty-sub">
