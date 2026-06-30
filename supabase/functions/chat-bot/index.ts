@@ -29,6 +29,10 @@ const WEBHOOK_SECRET = Deno.env.get("BOT_WEBHOOK_SECRET") ?? ""; // 设了就校
 
 const BOT_CLIENT_ID = "nobi-bot"; // 机器人固定标识：据此忽略自己发的消息
 
+// 清空上下文：用户 @机器人 + 这些词 → 机器人立一条「清空标记」消息，之后建上下文只取标记之后
+const RESET_MARK = "🧹 上下文已清空"; // 机器人发的标记消息以此开头；buildMessages 据此截断
+const RESET_RE = /^\/?\s*(清空|清除|重置|忘记|reset|clear)\s*(上下文|记忆|对话|历史)?\s*$/i;
+
 const REST = `${SUPABASE_URL}/rest/v1/messages`;
 const DB_HEADERS = {
   "Content-Type": "application/json",
@@ -68,9 +72,21 @@ async function buildMessages(room: string) {
     `&order=created_at.desc&limit=${CONTEXT_SIZE}&select=sender,client_id,kind,body`;
   const r = await fetch(url, { headers: DB_HEADERS });
   const rows: Row[] = r.ok ? await r.json() : [];
-  const history = rows.reverse();
+  const history = rows.reverse(); // 升序
+
+  // 找最后一次「清空标记」，只保留它之后的消息（标记之前的全不参考）
+  let startIdx = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.client_id === BOT_CLIENT_ID && m.body && m.body.startsWith(RESET_MARK)) {
+      startIdx = i + 1;
+      break;
+    }
+  }
+  const relevant = history.slice(startIdx);
+
   const msgs: { role: string; content: string }[] = [{ role: "system", content: SYSTEM_PROMPT }];
-  for (const m of history) {
+  for (const m of relevant) {
     if (m.kind !== "text" || !m.body) continue;
     if (m.body.charCodeAt(0) < 0x08) continue; // 游戏/系统帧不进上下文
     if (m.client_id === BOT_CLIENT_ID) {
@@ -134,6 +150,12 @@ Deno.serve(async (req: Request) => {
   if (row.kind !== "text" || !row.body) return new Response("not text", { status: 200 });
   if (row.body.charCodeAt(0) < 0x08) return new Response("game frame", { status: 200 }); // 游戏/系统帧
   if (!row.body.toLowerCase().includes(`@${BOT_NAME}`.toLowerCase())) return new Response("not mentioned", { status: 200 }); // 不分大小写
+
+  // 清空上下文指令：@机器人 清空/重置/clear → 不调模型，只立一条清空标记
+  if (RESET_RE.test(stripMention(row.body))) {
+    await sendReply(row.room, `${RESET_MARK}，之前的对话我就不参考啦，咱们重新开始～`).catch(() => {});
+    return new Response("context cleared", { status: 200 });
+  }
 
   if (!LLM_BASE_URL || !LLM_API_KEY || !LLM_MODEL) {
     await sendReply(row.room, "（机器人没配 LLM：去 Supabase 设 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL 密钥）").catch(() => {});
