@@ -50,9 +50,14 @@ function chatUrl(base: string): string {
   return b.endsWith("/chat/completions") ? b : `${b}/chat/completions`;
 }
 
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function stripMention(body: string): string {
+  // 不分大小写地去掉 @机器人名（@winky / @Winky / @WINKY 都算）
   return (body || "")
-    .split(new RegExp(`@${BOT_NAME}\\b`, "g")).join("")
+    .split(new RegExp(`@${escapeRe(BOT_NAME)}`, "gi")).join("")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -128,7 +133,7 @@ Deno.serve(async (req: Request) => {
   if (row.client_id === BOT_CLIENT_ID) return new Response("self", { status: 200 }); // 自己发的
   if (row.kind !== "text" || !row.body) return new Response("not text", { status: 200 });
   if (row.body.charCodeAt(0) < 0x08) return new Response("game frame", { status: 200 }); // 游戏/系统帧
-  if (!row.body.includes(`@${BOT_NAME}`)) return new Response("not mentioned", { status: 200 });
+  if (!row.body.toLowerCase().includes(`@${BOT_NAME}`.toLowerCase())) return new Response("not mentioned", { status: 200 }); // 不分大小写
 
   if (!LLM_BASE_URL || !LLM_API_KEY || !LLM_MODEL) {
     await sendReply(row.room, "（机器人没配 LLM：去 Supabase 设 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL 密钥）").catch(() => {});
