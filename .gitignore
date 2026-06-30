@@ -37,3 +37,6 @@ dist-ssr
 
 # 发布产物（make-latest-json.mjs 拷贝到这）
 release/
+
+# 聊天机器人配置（含 API Key，不入库；config.example.json 是模板）
+/scripts/chat-bot/config.json

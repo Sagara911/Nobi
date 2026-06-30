@@ -1,0 +1,18 @@
+{
+  "botName": "机器人",
+  "botAvatar": "🤖",
+  "systemPrompt": "你是 Nobi 聊天室里的助手机器人，名叫「机器人」。回答简洁、友好、用中文。",
+  "rooms": ["1234"],
+  "contextSize": 8,
+  "maxTokens": 500,
+  "announceOnStart": false,
+
+  "llm": {
+    "_说明": "和 Winky 一样的 OpenAI 兼容三件套。把你在 Winky 里用的那家 baseUrl/key/model 抄过来即可。",
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": "在这里填你的 API Key",
+    "model": "deepseek-chat"
+  },
+
+  "_supabase说明": "默认自动读项目根 .env.local 的 VITE_CHAT_SUPABASE_URL / ANON_KEY，无需在此填。要覆盖才加 supabaseUrl / supabaseAnonKey。"
+}
