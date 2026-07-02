@@ -13,15 +13,19 @@ const path = require('path');
 app.commandLine.appendSwitch('enable-transparent-visuals');
 app.disableHardwareAcceleration = false;
 
+// Phase 3 调试开关：true=实心背景+任务栏+自动 DevTools（方便看窗口和报错）；
+// false=透明置顶的壁纸形态。已验证通过，改回 false。
+const DEBUG = false;
+
 function createWindow() {
   const win = new BrowserWindow({
-    width: 960,
-    height: 380,
-    frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    alwaysOnTop: true,
-    skipTaskbar: true,
+    width: DEBUG ? 1000 : 960,
+    height: DEBUG ? 600 : 380,
+    frame: DEBUG,
+    transparent: !DEBUG,
+    backgroundColor: DEBUG ? '#0a0d12' : '#00000000',
+    alwaysOnTop: !DEBUG,
+    skipTaskbar: !DEBUG,
     resizable: true,
     hasShadow: false,
     webPreferences: {
@@ -32,6 +36,15 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, 'index.html'));
+
+  if (DEBUG) win.webContents.openDevTools({ mode: 'detach' });
+  // 渲染进程崩溃/加载失败时打到主进程 stdout，便于排查。
+  win.webContents.on('did-fail-load', (_e, code, desc) => {
+    console.log('[renderer] did-fail-load', code, desc);
+  });
+  win.webContents.on('render-process-gone', (_e, d) => {
+    console.log('[renderer] render-process-gone', JSON.stringify(d));
+  });
 
   // Esc 关闭（原型期方便）。
   win.webContents.on('before-input-event', (event, input) => {

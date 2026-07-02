@@ -2,21 +2,16 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Nobi 音频可视化壁纸（Phase 2 原型）</title>
+<title>Nobi 音频可视化壁纸</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
   /* 顶部一小条可拖动，方便原型期挪窗 */
   #drag { position: fixed; top: 0; left: 0; right: 0; height: 22px; -webkit-app-region: drag; z-index: 5; }
-  #canvas { display: block; width: 100vw; height: 100vh; }
+  #scene { display: block; width: 100vw; height: 100vh; }
   #hud {
     position: fixed; left: 14px; top: 10px; z-index: 6;
     font: 12px/1.5 -apple-system, "Segoe UI", sans-serif; color: #cfe;
-    text-shadow: 0 1px 3px #000; pointer-events: none;
-  }
-  #cover {
-    position: fixed; left: 14px; bottom: 14px; width: 76px; height: 76px; z-index: 6;
-    border-radius: 10px; object-fit: cover; box-shadow: 0 6px 20px #000a;
-    display: none; border: 1px solid #fff2;
+    text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap;
   }
   #err {
     position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
@@ -26,165 +21,39 @@
 </head>
 <body>
 <div id="drag"></div>
-<div id="hud">连接中… <span id="title"></span></div>
-<img id="cover" alt="cover" />
-<canvas id="canvas"></canvas>
+<div id="hud">启动中…</div>
+<canvas id="scene"></canvas>
 <div id="err"></div>
 
 <script>
-// ---- WebGL 初始化 --------------------------------------------------------
-const canvas = document.getElementById('canvas');
-const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false, antialias: true });
-const errBox = document.getElementById('err');
-if (!gl) {
-  errBox.style.display = 'flex';
-  errBox.textContent = '本机无法创建 WebGL 上下文 —— 这正是我们要排除的渲染坑。';
-  throw new Error('no webgl');
-}
-
-const NUM_BANDS = 48;
-
-const VS = `
-attribute vec2 a_pos;
-varying vec2 v_uv;
-void main() {
-  v_uv = a_pos * 0.5 + 0.5;
-  gl_Position = vec4(a_pos, 0.0, 1.0);
-}`;
-
-// 频段贴图（NUM_BANDS×1，按 uv.x 取当前柱高）→ 彩色发光柱状条，透明背景。
-const FS = `
-precision mediump float;
-uniform sampler2D u_bands;
-uniform float u_time;
-uniform float u_peak;
-varying vec2 v_uv;
-void main() {
-  vec2 uv = v_uv;
-  float h = texture2D(u_bands, vec2(uv.x, 0.5)).r;   // 0..1 柱高
-  h = clamp(h * 1.15, 0.0, 1.0);
-  float bar = smoothstep(h + 0.006, h - 0.03, uv.y);  // 柱身（下实上虚）
-  float glow = exp(-abs(uv.y - h) * 16.0) * 0.9;      // 柱顶辉光
-  // 颜色：横向渐变 + 随时间流动
-  vec3 c = mix(vec3(0.16, 0.5, 1.0), vec3(1.0, 0.28, 0.72), uv.x);
-  c = mix(c, vec3(0.25, 1.0, 0.85), 0.5 + 0.5 * sin(u_time * 0.6 + uv.x * 6.2831));
-  c *= 0.85 + 0.4 * u_peak;                            // 整体随峰值提亮
-  vec3 outc = c * bar + c * glow;
-  float a = clamp(bar + glow, 0.0, 1.0);
-  gl_FragColor = vec4(outc, a * 0.96);
-}`;
-
-function compile(type, src) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-    throw new Error('shader: ' + gl.getShaderInfoLog(s));
-  }
-  return s;
-}
-const prog = gl.createProgram();
-gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
-gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
-gl.linkProgram(prog);
-gl.useProgram(prog);
-
-// 全屏四边形
-const buf = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-const aPos = gl.getAttribLocation(prog, 'a_pos');
-gl.enableVertexAttribArray(aPos);
-gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-
-// 频段贴图（LUMINANCE，NEAREST → 柱子分明）
-const tex = gl.createTexture();
-gl.bindTexture(gl.TEXTURE_2D, tex);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-const bandBytes = new Uint8Array(NUM_BANDS);
-function uploadBands() {
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, NUM_BANDS, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, bandBytes);
-}
-uploadBands();
-
-gl.enable(gl.BLEND);
-gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-const uTime = gl.getUniformLocation(prog, 'u_time');
-const uPeak = gl.getUniformLocation(prog, 'u_peak');
-
-function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.floor(innerWidth * dpr);
-  canvas.height = Math.floor(innerHeight * dpr);
-  gl.viewport(0, 0, canvas.width, canvas.height);
-}
-window.addEventListener('resize', resize);
-resize();
-
-// ---- 数据：WS 实时帧 + 无数据时的待机动画 --------------------------------
-let peak = 0;
-let lastAudioTs = 0;
-
-function setBands(arr) {
-  for (let i = 0; i < NUM_BANDS; i++) {
-    const v = Math.max(0, Math.min(1, (arr[i] || 0) / 1.5));
-    bandBytes[i] = Math.round(v * 255);
-  }
-}
-function idleBands(t) {
-  // 没连上/没数据时的柔和呼吸波，用来单独验证「WebGL 是否在渲染」。
-  for (let i = 0; i < NUM_BANDS; i++) {
-    const base = 0.12 + 0.10 * Math.sin(t * 1.6 + i * 0.45);
-    const falloff = 1.0 - (i / NUM_BANDS) * 0.5;
-    bandBytes[i] = Math.round(Math.max(0, base * falloff) * 255);
-  }
-}
-
-const startT = performance.now();
-function frame() {
-  const now = performance.now();
-  const t = (now - startT) / 1000;
-  if (now - lastAudioTs > 400) { idleBands(t); peak *= 0.95; }
-  uploadBands();
-  gl.uniform1f(uTime, t);
-  gl.uniform1f(uPeak, peak);
-  gl.clearColor(0, 0, 0, 0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-
-// ---- 连接 Nobi 本地 WS ---------------------------------------------------
-const PORT = 17653;
-const hud = document.getElementById('hud');
-const titleEl = document.getElementById('title');
-const coverEl = document.getElementById('cover');
-
-function connect() {
-  const ws = new WebSocket('ws://127.0.0.1:' + PORT);
-  ws.onopen = () => { hud.firstChild.textContent = '已连接 '; };
-  ws.onclose = () => { hud.firstChild.textContent = '未连接（待机动画）'; setTimeout(connect, 1000); };
-  ws.onerror = () => ws.close();
-  ws.onmessage = (ev) => {
-    let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === 'audio') {
-      setBands(msg.bands || []);
-      peak = msg.peak || 0;
-      lastAudioTs = performance.now();
-    } else if (msg.type === 'track') {
-      titleEl.textContent = msg.title ? ('♪ ' + msg.title + (msg.artist ? ' — ' + msg.artist : '')) : '';
-      if (msg.cover) { coverEl.src = msg.cover; coverEl.style.display = 'block'; }
-      else { coverEl.style.display = 'none'; }
+  // 把报错(含 three.js 着色器编译 console.error)显示到页面，避免默默黑屏。
+  (function () {
+    const box = document.getElementById('err');
+    function show(msg) {
+      box.style.display = 'flex';
+      box.textContent = String(msg).slice(0, 1500);
     }
-  };
-}
-connect();
+    window.addEventListener('error', (e) => show('JS 错误: ' + (e.message || e.error)));
+    const origErr = console.error.bind(console);
+    console.error = function (...a) {
+      const s = a.join(' ');
+      if (/shader|glsl|compile|program|webgl/i.test(s)) show('着色器/WebGL 错误:\n' + s);
+      origErr(...a);
+    };
+  })();
 </script>
+<script src="vendor/three.r128.min.js"></script>
+<script>
+  // three.js 没加载出来（内核不支持等）→ 明确报出来，别默默黑屏。
+  if (!window.THREE) {
+    const e = document.getElementById('err');
+    e.style.display = 'flex';
+    e.textContent = 'three.js 未加载 —— WebGL 内核不可用？';
+  }
+</script>
+<script src="audio.js"></script>
+<script src="shaders.js"></script>
+<script src="particles.js"></script>
+<script src="boot.js"></script>
 </body>
 </html>
