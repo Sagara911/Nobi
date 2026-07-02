@@ -36,10 +36,13 @@ base64 = "0.22"
 pdf-extract = "0.7" # Winky 看文件：PDF 抽文字
 zip = "2" # Winky 看文件：Office(.docx/.xlsx/.pptx) 本质是 zip，解出里面的 XML 抽文字
 tiny_http = "0.12"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "net", "sync", "io-util"] }
+tokio-tungstenite = "0.24" # 音频可视化壁纸：本地 WebSocket 把频谱+封面推给独立 Chromium 渲染器
+futures-util = "0.3" # tokio-tungstenite 的 Sink/Stream 扩展
 # 离线神经翻译（OPUS-MT / Marian，onnxruntime）—— 整句离线兜底，不依赖本地大模型或联网
 ort = "2.0.0-rc.12"
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
+rustfft = "6" # 音频可视化壁纸：系统音频 loopback → FFT 分频
 
 # 全局快捷键（看球小窗老板键 Alt+`、直开窗透明度 Alt+- / Alt+=）—— 桌面端专属
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -48,5 +51,6 @@ tauri-plugin-autostart = "2"
 
 # 直开看球窗：原生窗口 alpha（SetLayeredWindowAttributes）+ 老板键静音（WebView2 IsMuted）—— 仅 Windows
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Media_Control", "Foundation", "Storage_Streams"] }
 webview2-com = "0.38"
+wasapi = "0.23" # 音频可视化壁纸：WASAPI loopback 抓系统输出（安全封装，比手写 COM 稳）

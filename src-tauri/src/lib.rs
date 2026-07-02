@@ -26,6 +26,9 @@ mod selection_translate;
 mod settings;
 mod thumbs;
 mod translation;
+mod wallpaper_audio;
+mod wallpaper_media;
+mod wallpaper_stream;
 mod watch;
 
 use tauri::menu::{Menu, MenuItem};
@@ -2221,6 +2224,11 @@ pub fn run() {
             selection_translate::close_selection_translate_window,
             selection_translate::get_selection_translate_enabled,
             selection_translate::set_selection_translate_enabled,
+            // wallpaper（音频可视化壁纸：Phase 1 探针 + Phase 2 本地 WS 推流）
+            wallpaper_audio::wallpaper_audio_probe,
+            wallpaper_media::wallpaper_now_playing,
+            wallpaper_stream::wallpaper_stream_start,
+            wallpaper_stream::wallpaper_stream_stop,
             // board
             board::list_boards,
             board::create_board,
