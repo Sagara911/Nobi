@@ -286,13 +286,17 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
   };
 
   const backendRef = useRef<ChatBackend | null>(null);
-  const seenIds = useRef<Set<string>>(new Set());
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const appendMsg = useCallback((m: ChatMessage) => {
-    if (seenIds.current.has(m.id)) return;
-    seenIds.current.add(m.id);
-    setMessages((prev) => [...prev, m]);
+    // 按 id upsert：新 id 追加；已见过的 id（机器人流式回复的多次 UPDATE、或历史/realtime 重复）就地覆盖正文
+    setMessages((prev) => {
+      const i = prev.findIndex((x) => x.id === m.id);
+      if (i === -1) return [...prev, m];
+      const next = prev.slice();
+      next[i] = m;
+      return next;
+    });
   }, []);
 
   // 小游戏走聊天通道，但正文带各自的 TAG 前缀：分流给对应游戏、不进消息流。
@@ -388,7 +392,6 @@ function ChatRoom({ profileId, room }: { profileId: string; room: string }) {
     let disposed = false;
     const backend = createBackend(cfg);
     backendRef.current = backend;
-    seenIds.current = new Set();
     setMessages([]);
 
     const offMsg = backend.onMessage((m) => {

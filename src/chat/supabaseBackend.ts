@@ -91,6 +91,20 @@ export class SupabaseBackend implements ChatBackend {
           this.msgCbs.forEach((cb) => cb(msg));
         },
       )
+      .on(
+        // 机器人流式回复：同一行被反复 UPDATE 加长正文，前端按 id 覆盖已有气泡
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: TABLE,
+          filter: `room=eq.${room}`,
+        },
+        (payload) => {
+          const msg = rowToMessage(payload.new as Row);
+          this.msgCbs.forEach((cb) => cb(msg));
+        },
+      )
       .on("broadcast", { event: "g" }, ({ payload }) => {
         // 游戏瞬时帧（不落库）：合成一条最小 ChatMessage 交给 onMessage，路由层按 TAG 分流给对应游戏
         const p = payload as { id?: string; sender?: string; client_id?: string; body?: string };

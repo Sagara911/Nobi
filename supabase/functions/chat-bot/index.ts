@@ -115,6 +115,66 @@ async function askLLM(messages: { role: string; content: string }[]): Promise<st
   return text;
 }
 
+const CURSOR = "▍"; // 流式期间追加在末尾的"打字光标"，收尾时去掉
+const FLUSH_MS = 500; // 更新那一行的最小间隔（realtime eventsPerSecond=5，别刷太密）
+
+// 流式调 LLM：每积累一点就回调 onText(累计全文)。返回最终全文。
+// 端点不支持 SSE（返回的不是 text/event-stream）时退回整段 JSON 解析。
+async function streamLLM(
+  messages: { role: string; content: string }[],
+  onText: (full: string) => void,
+): Promise<string> {
+  const resp = await fetch(chatUrl(LLM_BASE_URL), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${LLM_API_KEY.trim()}` },
+    body: JSON.stringify({ model: LLM_MODEL, stream: true, max_tokens: MAX_TOKENS, messages }),
+  });
+  if (!resp.ok) {
+    const t = await resp.text().catch(() => "");
+    throw new Error(`API 返回 ${resp.status} ${t.slice(0, 200)}`);
+  }
+  const ct = resp.headers.get("content-type") ?? "";
+  if (!resp.body || !ct.includes("text/event-stream")) {
+    // 端点忽略了 stream:true，按整段返回
+    const v = await resp.json().catch(() => null);
+    const text = (v?.choices?.[0]?.message?.content ?? "").trim();
+    if (!text) throw new Error("空回复");
+    onText(text);
+    return text;
+  }
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let full = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? ""; // 最后一段可能是半行，留到下次
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith("data:")) continue;
+      const data = t.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      try {
+        const j = JSON.parse(data);
+        const delta = j?.choices?.[0]?.delta?.content ?? "";
+        if (delta) {
+          full += delta;
+          onText(full);
+        }
+      } catch {
+        /* 半个 JSON 块，忽略等下一片 */
+      }
+    }
+  }
+  full = full.trim();
+  if (!full) throw new Error("空回复");
+  return full;
+}
+
 async function sendReply(room: string, text: string): Promise<void> {
   await fetch(REST, {
     method: "POST",
@@ -127,6 +187,35 @@ async function sendReply(room: string, text: string): Promise<void> {
       body: text,
       avatar: BOT_AVATAR,
     }),
+  });
+}
+
+// 先占个空位：插一条机器人行并拿回它的 id，之后往这一行里灌流式内容。
+// 拿不到 id（老 PostgREST/异常）就返回 null，调用方退回一次性回复。
+async function insertPlaceholder(room: string): Promise<string | null> {
+  const r = await fetch(REST, {
+    method: "POST",
+    headers: { ...DB_HEADERS, Prefer: "return=representation" },
+    body: JSON.stringify({
+      room,
+      sender: BOT_NAME,
+      client_id: BOT_CLIENT_ID,
+      kind: "text",
+      body: CURSOR,
+      avatar: BOT_AVATAR,
+    }),
+  });
+  if (!r.ok) return null;
+  const rows = await r.json().catch(() => null);
+  const id = rows?.[0]?.id;
+  return id == null ? null : String(id);
+}
+
+async function updateRow(id: string, text: string): Promise<void> {
+  await fetch(`${REST}?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { ...DB_HEADERS, Prefer: "return=minimal" },
+    body: JSON.stringify({ body: text }),
   });
 }
 
@@ -162,14 +251,42 @@ Deno.serve(async (req: Request) => {
     return new Response("llm not configured", { status: 200 });
   }
 
+  const messages = await buildMessages(row.room);
+
+  // 先占位：让用户瞬间看到机器人在"打字"，把冷启动 + 生成的等待藏起来
+  const id = await insertPlaceholder(row.room);
+  if (id == null) {
+    // 拿不到行 id：退回老的一次性回复
+    try {
+      const reply = await askLLM(messages);
+      await sendReply(row.room, reply);
+      return new Response("ok (non-stream)", { status: 200 });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await sendReply(row.room, `（我出错了：${msg}）`).catch(() => {});
+      return new Response(`err: ${msg}`, { status: 200 });
+    }
+  }
+
+  // 边收边灌：按 FLUSH_MS 节流更新那一行，末尾强制刷一次完整文本（保证最后落地的是全文）
+  let lastSent = 0;
+  let chain: Promise<void> = Promise.resolve();
+  const flush = (text: string, force: boolean) => {
+    const now = Date.now();
+    if (!force && now - lastSent < FLUSH_MS) return;
+    lastSent = now;
+    chain = chain.then(() => updateRow(id, text)).catch(() => {});
+  };
+
   try {
-    const messages = await buildMessages(row.room);
-    const reply = await askLLM(messages);
-    await sendReply(row.room, reply);
+    const reply = await streamLLM(messages, (full) => flush(full + CURSOR, false));
+    flush(reply, true); // 去掉光标 + 补齐可能被节流跳过的尾巴
+    await chain;
     return new Response("ok", { status: 200 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await sendReply(row.room, `（我出错了：${msg}）`).catch(() => {});
+    flush(`（我出错了：${msg}）`, true);
+    await chain;
     return new Response(`err: ${msg}`, { status: 200 });
   }
 });

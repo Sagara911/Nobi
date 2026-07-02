@@ -40,6 +40,8 @@ begin
     alter publication supabase_realtime add table public.messages;
   end if;
 end $$;
+-- 机器人流式回复靠 UPDATE 事件推送；要让 realtime 的 room 过滤在 UPDATE 上生效，需整行复制标识
+alter table public.messages replica identity full;
 
 -- 4. 存图的 Storage 公开桶
 insert into storage.buckets (id, name, public)
